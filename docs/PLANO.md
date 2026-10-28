@@ -17,9 +17,9 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Senha forte do Postgres e User-Agent identificado no `.env`
 - [x] Testes: 43 em Python (unitários + integração com banco descartável) e Go; `make test` (2026-10-28)
 - [x] Cobertura dos coletores em 91%; `ruff` limpo
-- [ ] Primeiro commit e repositório remoto (GitHub)
-- [ ] CI rodando `make test` com serviço Postgres a cada push/PR
-- [ ] Licença (AGPL-3.0 já declarada no `pyproject.toml`) em `LICENSE` na raiz e `CONTRIBUTING.md`
+- [x] Primeiro commit e repositório remoto: `github.com/dw-souza/franca-transparente` (2026-10-28)
+- [~] CI em `.github/workflows/ci.yml` (Python + ruff + Postgres, Go + gofmt/vet/test) — falta o primeiro run verde no GitHub
+- [x] `LICENSE` (AGPL-3.0, texto oficial) e `CONTRIBUTING.md` (2026-10-28)
 
 ## Fase 1 — Radar PNCP (MVP)
 

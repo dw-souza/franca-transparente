@@ -29,7 +29,7 @@ class Settings:
     http_timeout: float = 30.0
     http_delay: float = 0.5  # pausa entre requisições: a API do PNCP devolve 429 em rajadas
     http_retries: int = 5
-    user_agent: str = "PainelTransparenciaFranca/0.1 (+https://github.com/<org>/franca-transparencia)"
+    user_agent: str = "PainelTransparenciaFranca/0.1 (+https://github.com/dw-souza/franca-transparente)"
     endpoints_dir: Path = ENDPOINTS_DIR_PADRAO
 
     @classmethod

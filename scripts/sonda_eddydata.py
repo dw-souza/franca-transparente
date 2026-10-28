@@ -36,7 +36,7 @@ API = "https://eddydata-api.franca.sp.gov.br/api/v1/franca"
 CIDADE = 1
 CODIGO_ORGAO = "020000"  # environment.orgao do bundle do portal
 INTERMEDIARIO = "http://certumdvtlsg2r39ca.repository.certum.pl/certumdvtlsg2r39ca.cer"
-USER_AGENT = "PainelTransparenciaFranca/0.1 (+https://github.com/dw-souza/franca-transparencia)"
+USER_AGENT = "PainelTransparenciaFranca/0.1 (+https://github.com/dw-souza/franca-transparente)"
 PAUSA = 2.0  # segundos entre requisições
 SAIDA = Path("dados/eddydata")
 
