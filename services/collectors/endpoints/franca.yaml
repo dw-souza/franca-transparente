@@ -1,0 +1,67 @@
+# Backlog de mapeamento dos portais de Franca-SP.
+# Nada aqui foi confirmado ainda: as URLs abaixo são só os pontos de partida da investigação.
+# Ao mapear um endpoint, substitua a entrada pela spec completa (veja _modelo.yaml) e mude o status.
+#
+# Reconhecimento de 2026-10-28 (só leitura do bundle JS público, nenhuma chamada à API):
+# * transparencia.franca.sp.gov.br não existe no DNS. O portal é o sistema EddyData:
+#   https://eddydata.franca.sp.gov.br/transparencia/  (Angular; bundle publicado sem minificar)
+# * API: https://eddydata-api.franca.sp.gov.br/api/v1/franca/{cidade=1}/{recurso}/extendido/{pagina}/{limite}?filtros
+#   Recursos: licitacoes, contratos, contrato-aditamentos, empenhos, liquidacoes, pagamentos, favorecidos,
+#   atas-registro-precos, compras.
+# * Acesso anônimo (CONFIRMADO em 2026-10-28 com scripts/sonda_eddydata.py): POST usuarios/token-publico
+#   devolve {token} (JWT de 30 min, id=0, sistema=TRANSPARENCIA). Cada GET leva Authorization "JWT <token>",
+#   Content-Type application/json, "agora" (epoch ms) e "codigo" = bcrypt(((agora-iat)/id).toFixed(0), sal=chave);
+#   com id=0 o texto hasheado é "Infinity". Uso autorizado pelo mantenedor do projeto.
+# * Listagem: GET {cidade}/{recurso}/{pagina}/{limite}?ignoreCondObrig=true&orgao.id=1&<campo>$ge=&<campo>$le=
+#   &relations=...  Resposta {content, numberOfElements (TOTAL), totalPages, size, first, last}.
+#   Órgão: orgaos/filtrar?codigo=020000&cidade.id=1 -> id=1 (MUNICÍPIO DE FRANCA, 47.970.769/0001-04).
+# * Volumes de 28/09 a 28/10/2026: licitações 30, contratos 104, empenhos 3.397, liquidações 5.905, pagamentos 5.558.
+# * Cuidados: registros excluídos logicamente vêm na lista (excluido/inativo); empenhos de anulação têm valor
+#   negativo (especie EOA); licitacoes.sequencial_pncp + ano casa com o id do PNCP; contrato-aditamentos não aceita
+#   filtro orgao.id (HTTP 500). "favorecido" traz ~72 campos, inclusive dados pessoais e bancários, e "orgao" traz
+#   chave_acesso: coletar só uma lista branca de campos, nunca o objeto inteiro.
+# * O servidor não envia o certificado intermediário (Certum DV TLS G2 R39 CA); clientes Python precisam
+#   de um bundle com ele (nunca verify=False).
+
+endpoints:
+  # ------------------------------------------------ Portal da Transparência da Prefeitura
+  - id: transparencia.despesas.empenhos
+    portal: eddydata.franca.sp.gov.br
+    descricao: Empenhos, liquidações e pagamentos por credor/unidade
+    destino: despesas
+    url: https://eddydata.franca.sp.gov.br/transparencia/
+    notas: Prioridade 1. Cobre pagamentos fora do PNCP (contratos antigos, Lei 8.666) e permite cruzar contrato × pago.
+
+  - id: transparencia.licitacoes.lista
+    portal: eddydata.franca.sp.gov.br
+    descricao: Licitações publicadas no portal municipal (inclui processos anteriores ao PNCP)
+    destino: licitacoes
+    url: https://eddydata.franca.sp.gov.br/transparencia/
+
+  - id: transparencia.contratos.lista
+    portal: eddydata.franca.sp.gov.br
+    descricao: Contratos e aditivos registrados no portal municipal
+    destino: contratos
+    url: https://eddydata.franca.sp.gov.br/transparencia/
+
+  - id: transparencia.receitas.arrecadacao
+    portal: eddydata.franca.sp.gov.br
+    descricao: Receitas arrecadadas (fase 2)
+    destino: receitas
+    url: https://eddydata.franca.sp.gov.br/transparencia/
+
+  # ------------------------------------------------ Diário Oficial do Município (DOMF)
+  - id: domf.edicoes.lista
+    portal: A_DEFINIR
+    descricao: Listagem de edições do Diário Oficial (data, número, link do PDF)
+    destino: diarios_oficiais
+    url: A_DEFINIR
+    notas: Querido Diário não cobre Franca (API em 2026-10-28 devolveu total_gazettes=0 para 3516200). Spider próprio necessário; confirmar portal oficial do DOMF.
+
+  # ------------------------------------------------ Câmara Municipal
+  - id: camara.licitacoes.lista
+    portal: A_DEFINIR
+    descricao: Licitações e contratos da Câmara Municipal de Franca
+    destino: licitacoes
+    url: A_DEFINIR
+    notas: A Câmara (CNPJ 49219538000180) já publica no PNCP e foi descoberta na coleta de 2026-10-28; o portal próprio só agrega o que faltar.

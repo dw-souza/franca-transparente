@@ -1,0 +1,57 @@
+# Modelo documentado de EndpointSpec. Arquivos iniciados por "_" não são sincronizados nem executados,
+# mas são validados por `franca-collect rea validar` e pelos testes.
+#
+# Ciclo de vida (campo status):
+#   a_mapear  → endpoint conhecido/suspeito, ainda sem contrato de request/response confirmado
+#   mapeado   → request reproduzido fora do navegador, resposta JSON entendida
+#   validado  → rodou em produção e os números batem com o portal (amostragem manual)
+#   quebrado  → a fonte mudou; o executor falhou. Abrir issue com novo HAR
+#   descontinuado
+#
+# Templates disponíveis em params/corpo: {data_inicio}, {data_fim} (date; aceitam formato,
+# ex. {data_inicio:%d/%m/%Y}), {ano}.
+
+padrao:                       # valores herdados por todos os endpoints deste arquivo
+  portal: exemplo.gov.br
+  intervalo_segundos: 1.0
+
+endpoints:
+  - id: exemplo.despesas.empenhos
+    descricao: Empenhos por período (exemplo fictício de API estilo DataTables)
+    status: mapeado
+    ativo: false
+    destino: despesas
+    metodo: POST
+    url: https://exemplo.gov.br/api/despesas/empenhos
+    headers:
+      X-Requested-With: XMLHttpRequest
+    corpo_tipo: form
+    corpo:
+      dataInicial: "{data_inicio:%d/%m/%Y}"
+      dataFinal: "{data_fim:%d/%m/%Y}"
+      exercicio: "{ano}"
+    janela_dias: 31
+    registros_em: data
+    chave: [numeroEmpenho, exercicio]
+    paginacao:
+      tipo: offset
+      parametro: start
+      inicio: 0
+      tamanho_parametro: length
+      tamanho: 100
+      em: corpo
+    mapeamento:
+      numero: numeroEmpenho
+      data: dataEmpenho
+      credor_documento: credor.cnpjCpf
+      credor_nome: credor.nome
+      unidade: unidadeGestora.nome
+      valor_empenhado: valores.empenhado
+      valor_pago: valores.pago
+    descoberta:
+      em: 2026-10-28
+      por: "@handle"
+      metodo: devtools/HAR
+      evidencia: docs/rea/evidencias/exemplo-empenhos.har
+    notas: |
+      O portal envia o token anti-CSRF no cookie de sessão; não é necessário para leitura.

@@ -1,0 +1,6 @@
+DROP FUNCTION IF EXISTS normalizar_documento(text);
+DROP FUNCTION IF EXISTS set_atualizado_em();
+DROP TEXT SEARCH CONFIGURATION IF EXISTS pt_unaccent;
+DROP FUNCTION IF EXISTS f_unaccent(text);
+DROP EXTENSION IF EXISTS unaccent;
+DROP EXTENSION IF EXISTS pg_trgm;

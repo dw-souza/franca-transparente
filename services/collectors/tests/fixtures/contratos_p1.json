@@ -1,0 +1,150 @@
+{
+ "data": [
+  {
+   "numeroControlePncpCompra": "47970769000104-1-000012/2026",
+   "numeroControlePNCP": "47970769000104-2-000005/2026",
+   "anoContrato": 2026,
+   "sequencialContrato": 5,
+   "numeroContratoEmpenho": "5/2026",
+   "processo": "1012/2026",
+   "tipoContrato": {
+    "id": 1,
+    "nome": "Contrato (termo inicial)"
+   },
+   "categoriaProcesso": {
+    "id": 2,
+    "nome": "Compras"
+   },
+   "orgaoEntidade": {
+    "cnpj": "47970769000104",
+    "razaoSocial": "MUNICIPIO DE FRANCA",
+    "poderId": "E",
+    "esferaId": "M"
+   },
+   "unidadeOrgao": {
+    "ufNome": "São Paulo",
+    "codigoUnidade": "1",
+    "nomeUnidade": "SECRETARIA MUNICIPAL DE SAUDE",
+    "ufSigla": "SP",
+    "municipioNome": "Franca",
+    "codigoIbge": "3516200"
+   },
+   "niFornecedor": "12.345.678/0001-95",
+   "tipoPessoa": "PJ",
+   "nomeRazaoSocialFornecedor": "DISTRIBUIDORA DE MEDICAMENTOS EXEMPLO LTDA",
+   "objetoContrato": "Fornecimento de medicamentos",
+   "informacaoComplementar": null,
+   "valorInicial": 120000.0,
+   "numeroParcelas": 12,
+   "valorParcela": 10000.0,
+   "valorGlobal": 120000.0,
+   "valorAcumulado": 120000.0,
+   "dataAssinatura": "2026-10-15",
+   "dataVigenciaInicio": "2026-10-15",
+   "dataVigenciaFim": "2027-10-14",
+   "dataPublicacaoPncp": "2026-10-16T14:00:00",
+   "dataAtualizacao": "2026-10-16T14:00:00",
+   "dataAtualizacaoGlobal": "2026-10-16T14:00:00",
+   "receita": false
+  },
+  {
+   "numeroControlePncpCompra": null,
+   "numeroControlePNCP": "47970769000104-2-000006/2026",
+   "anoContrato": 2026,
+   "sequencialContrato": 6,
+   "numeroContratoEmpenho": "6/2026",
+   "processo": "1012/2026",
+   "tipoContrato": {
+    "id": 1,
+    "nome": "Contrato (termo inicial)"
+   },
+   "categoriaProcesso": {
+    "id": 2,
+    "nome": "Compras"
+   },
+   "orgaoEntidade": {
+    "cnpj": "47970769000104",
+    "razaoSocial": "MUNICIPIO DE FRANCA",
+    "poderId": "E",
+    "esferaId": "M"
+   },
+   "unidadeOrgao": {
+    "ufNome": "São Paulo",
+    "codigoUnidade": "1",
+    "nomeUnidade": "SECRETARIA MUNICIPAL DE SAUDE",
+    "ufSigla": "SP",
+    "municipioNome": "Franca",
+    "codigoIbge": "3516200"
+   },
+   "niFornecedor": "12ABC34501DE35",
+   "tipoPessoa": "PJ",
+   "nomeRazaoSocialFornecedor": "EMPRESA CNPJ ALFANUMERICO LTDA",
+   "objetoContrato": "Fornecimento de medicamentos",
+   "informacaoComplementar": null,
+   "valorInicial": 8000.0,
+   "numeroParcelas": 12,
+   "valorParcela": 666.67,
+   "valorGlobal": 8000.0,
+   "valorAcumulado": 8000.0,
+   "dataAssinatura": "2026-10-15",
+   "dataVigenciaInicio": "2026-10-15",
+   "dataVigenciaFim": "2027-10-14",
+   "dataPublicacaoPncp": "2026-10-16T14:00:00",
+   "dataAtualizacao": "2026-10-16T14:00:00",
+   "dataAtualizacaoGlobal": "2026-10-16T14:00:00",
+   "receita": false
+  },
+  {
+   "numeroControlePncpCompra": null,
+   "numeroControlePNCP": "47970769000104-2-000007/2026",
+   "anoContrato": 2026,
+   "sequencialContrato": 7,
+   "numeroContratoEmpenho": "7/2026",
+   "processo": "1012/2026",
+   "tipoContrato": {
+    "id": 1,
+    "nome": "Contrato (termo inicial)"
+   },
+   "categoriaProcesso": {
+    "id": 2,
+    "nome": "Compras"
+   },
+   "orgaoEntidade": {
+    "cnpj": "47970769000104",
+    "razaoSocial": "MUNICIPIO DE FRANCA",
+    "poderId": "E",
+    "esferaId": "M"
+   },
+   "unidadeOrgao": {
+    "ufNome": "São Paulo",
+    "codigoUnidade": "1",
+    "nomeUnidade": "SECRETARIA MUNICIPAL DE SAUDE",
+    "ufSigla": "SP",
+    "municipioNome": "Franca",
+    "codigoIbge": "3516200"
+   },
+   "niFornecedor": "123.456.789-09",
+   "tipoPessoa": "PF",
+   "nomeRazaoSocialFornecedor": "FULANO DE TAL",
+   "objetoContrato": "Fornecimento de medicamentos",
+   "informacaoComplementar": null,
+   "valorInicial": 4500.0,
+   "numeroParcelas": 12,
+   "valorParcela": 375.0,
+   "valorGlobal": 4500.0,
+   "valorAcumulado": 4500.0,
+   "dataAssinatura": "2026-10-15",
+   "dataVigenciaInicio": "2026-10-15",
+   "dataVigenciaFim": "2027-10-14",
+   "dataPublicacaoPncp": "2026-10-16T14:00:00",
+   "dataAtualizacao": "2026-10-16T14:00:00",
+   "dataAtualizacaoGlobal": "2026-10-16T14:00:00",
+   "receita": false
+  }
+ ],
+ "totalRegistros": 3,
+ "totalPaginas": 1,
+ "numeroPagina": 1,
+ "paginasRestantes": 0,
+ "empty": false
+}

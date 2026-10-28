@@ -1,0 +1,13 @@
+.env
+dados/
+*.har
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+.next/
+services/api/bin/
+.DS_Store
+verificacao.log

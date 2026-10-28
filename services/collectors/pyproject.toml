@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "franca-collectors"
+version = "0.1.0"
+description = "Coletores do Painel de Transparência Cívica de Franca-SP (PNCP, portais municipais, DOMF)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+dependencies = [
+    "requests>=2.31",
+    "pydantic>=2.6",
+    "PyYAML>=6.0",
+    "tzdata>=2024.1",          # zoneinfo em imagens slim/Windows
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[project.scripts]
+franca-collect = "franca_collectors.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["franca_collectors*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integracao: precisa de PostgreSQL (TEST_DATABASE_URL ou DATABASE_URL); pulado se indisponível"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
