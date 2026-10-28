@@ -118,13 +118,19 @@ def test_razao_social_da_receita_prevalece_sobre_o_pncp(banco_teste, pg):
 def test_falha_de_um_registro_nao_envenena_os_seguintes(sink_pg, pg):
     import psycopg
 
-    # Primeiro registro do órgão viola um CHECK: o órgão criado na mesma transação é desfeito.
+    # Primeiro registro do órgão viola um CHECK (CNPJ inválido do fornecedor): o órgão criado na mesma
+    # transação é desfeito e não pode continuar no cache de ids.
     with pytest.raises(psycopg.errors.CheckViolation):
-        sink_pg.salvar_licitacao(contratacao(valorTotalEstimado=-1))
+        sink_pg.salvar_contrato(contrato(niFornecedor="123"))
     assert _um(pg, "SELECT count(*) FROM orgaos")[0] == 0
 
     assert sink_pg.salvar_licitacao(contratacao(1)) == "inserido"
     assert sink_pg.salvar_contrato(contrato()) == "inserido"
+
+
+def test_valor_negativo_da_fonte_e_gravado(sink_pg, pg):
+    assert sink_pg.salvar_licitacao(contratacao(valorTotalEstimado=-36)) == "inserido"
+    assert _um(pg, "SELECT valor_estimado FROM licitacoes")[0] == -36
 
 
 # --------------------------------------------------------------- coleta e REA

@@ -3,6 +3,7 @@ from decimal import Decimal
 from itertools import pairwise
 
 import pytest
+import requests
 from conftest import fixture
 
 from franca_collectors.http import RespostaInvalida
@@ -41,6 +42,13 @@ def test_paginacao_e_parametros(sessao_fake, rota_pncp):
 def test_204_significa_sem_resultados(sessao_fake, rota_pncp):
     s, _ = sessao_fake(rota_pncp)
     assert list(cliente(s).contratacoes_publicacao(date(2026, 10, 1), date(2026, 10, 2), 8)) == []
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_erro_sem_corpo_nao_vira_sem_resultados(sessao_fake, status):
+    s, _ = sessao_fake(lambda *a: (status, None))
+    with pytest.raises(requests.HTTPError):
+        list(cliente(s).contratacoes_publicacao(date(2026, 10, 1), date(2026, 10, 2), 6))
 
 
 def test_html_no_lugar_de_json_falha_fechado(sessao_fake):

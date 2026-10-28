@@ -63,11 +63,11 @@ class PNCPClient:
         self.requisicoes += 1
         log.debug("GET %s %s -> %s", caminho, params, resp.status_code)
 
-        if resp.status_code == 204 or not resp.content:
-            return None
         if resp.status_code == 400:
             raise ValueError(f"PNCP rejeitou os parâmetros {params}: {resp.text[:300]}")
-        resp.raise_for_status()
+        resp.raise_for_status()  # antes do teste de corpo vazio: 429/5xx sem corpo não pode virar "sem resultados"
+        if resp.status_code == 204 or not resp.content:
+            return None
         if "json" not in resp.headers.get("Content-Type", ""):
             raise RespostaInvalida(
                 f"{url} devolveu {resp.headers.get('Content-Type')!r} em vez de JSON "

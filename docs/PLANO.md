@@ -18,7 +18,7 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Testes: 43 em Python (unitários + integração com banco descartável) e Go; `make test` (2026-10-28)
 - [x] Cobertura dos coletores em 91%; `ruff` limpo
 - [x] Primeiro commit e repositório remoto: `github.com/dw-souza/franca-transparente` (2026-10-28)
-- [~] CI em `.github/workflows/ci.yml` (Python + ruff + Postgres, Go + gofmt/vet/test) — falta o primeiro run verde no GitHub
+- [x] CI em `.github/workflows/ci.yml` (Python + ruff + Postgres, Go + gofmt/vet/test), verde no GitHub (2026-10-28)
 - [x] `LICENSE` (AGPL-3.0, texto oficial) e `CONTRIBUTING.md` (2026-10-28)
 
 ## Fase 1 — Radar PNCP (MVP)
@@ -26,12 +26,16 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Coletor de contratações e contratos, incremental e idempotente
 - [x] Campos conferidos contra a API real (2026-10-28)
 - [x] Órgãos de Franca no PNCP identificados: Prefeitura, Câmara, Faculdade de Direito, Uni-FACEF
-- [ ] Carga histórica desde 2023-04-01 (início da Lei 14.133) e conferência de volume por ano/órgão
-- [ ] Procurar fundos e autarquias que só aparecem na carga longa (Saúde, Previdência etc.) e somar a `ORGAOS_CNPJ`
+- [x] Carga histórica desde 2023-04-01: 3.075 licitações e 1.483 contratos, todos vinculados à licitação (2026-10-28).
+  Franca só passa a publicar no PNCP em volume a partir de 2024.
+- [x] Órgãos descobertos na carga longa e somados a `ORGAOS_CNPJ`: FEAC e SASSOM (6 no total)
 - [ ] Coleta do radar de propostas abertas (`pncp abertas`) agendada
 - [ ] Agendamento diário da coleta incremental (cron/launchd local; depois no servidor)
 - [ ] Coletar itens e resultados das contratações (`/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens`) para preço unitário
 - [ ] Coletar termos aditivos dos contratos
+- [x] Valores negativos da fonte aceitos no banco (migration 000010); o PNCP publica erros como estimado = -36
+- [ ] Qualidade de dado: marcar valores fora da curva e negativos; separar receita (leilão/alienação, concessão)
+  de despesa nos totais do painel. Ex.: leilão de terreno do Uni-FACEF com estimado de R$ 7,03 bi
 
 ## Fase 2 — Portal da Transparência (EddyData)
 
