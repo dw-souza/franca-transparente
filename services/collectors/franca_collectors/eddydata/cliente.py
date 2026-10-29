@@ -144,12 +144,17 @@ class EddyDataClient:
                 return
             pagina += 1
 
-    def orgao_id(self, codigo: str = CODIGO_ORGAO) -> int:
+    def orgao(self, codigo: str = CODIGO_ORGAO) -> dict[str, Any]:
+        """Órgão do portal (id interno e CNPJ). Só id, código, nome e CNPJ: o objeto traz até chave de acesso."""
         dados = self.get("orgaos/filtrar", {"codigo": codigo, "cidade.id": self.cidade})
         conteudo = dados.get("content") or []
         if not conteudo:
             raise RespostaInvalida(f"órgão {codigo} não encontrado no EddyData")
-        return int(conteudo[0]["id"])
+        o = conteudo[0]
+        return {"id": int(o["id"]), "codigo": o.get("codigo"), "nome": o.get("nome"), "cnpj": o.get("cnpj")}
+
+    def orgao_id(self, codigo: str = CODIGO_ORGAO) -> int:
+        return self.orgao(codigo)["id"]
 
 
 def criar_cliente(user_agent: str, retries: int = 5, **kwargs) -> EddyDataClient:

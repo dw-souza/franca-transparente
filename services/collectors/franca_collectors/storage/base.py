@@ -24,6 +24,10 @@ class Sink:
     def salvar_registro_bruto(self, registro: RegistroBruto, execucao_id: int | None = None) -> Resultado:
         raise NotImplementedError
 
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+        """Registro do sistema municipal (EddyData): tipo em empenho, liquidacao, pagamento, contrato, aditamento."""
+        raise NotImplementedError
+
     def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
         """Fila da coleta de itens: compras nunca coletadas ou atualizadas na fonte depois da última coleta.
 

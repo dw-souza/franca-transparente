@@ -37,9 +37,9 @@ _COLS_CONTRATO = (
 )
 
 
-def _upsert_sql(tabela: str, colunas: tuple[str, ...], conflito: str = "id_pncp") -> str:
+def _upsert_sql(tabela: str, colunas: tuple[str, ...], conflito: tuple[str, ...] = ("id_pncp",)) -> str:
     """INSERT ... ON CONFLICT DO UPDATE que só escreve quando o payload mudou."""
-    sets = [f"{c} = EXCLUDED.{c}" for c in colunas if c != conflito]
+    sets = [f"{c} = EXCLUDED.{c}" for c in colunas if c not in conflito]
     if tabela in ("licitacoes", "contratos"):
         for col in ("resumo_ia", "resumo_ia_modelo", "resumo_ia_em"):
             sets.append(
@@ -49,7 +49,7 @@ def _upsert_sql(tabela: str, colunas: tuple[str, ...], conflito: str = "id_pncp"
     return (
         f"INSERT INTO {tabela} ({', '.join(colunas)})\n"
         f"VALUES ({', '.join(f'%({c})s' for c in colunas)})\n"
-        f"ON CONFLICT ({conflito}) DO UPDATE SET\n  " + ",\n  ".join(sets) + "\n"
+        f"ON CONFLICT ({', '.join(conflito)}) DO UPDATE SET\n  " + ",\n  ".join(sets) + "\n"
         f"WHERE {tabela}.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash\n"
         "RETURNING (xmax = 0) AS inserido"
     )
@@ -124,6 +124,62 @@ ON CONFLICT (id) DO UPDATE SET
     descoberto_por = EXCLUDED.descoberto_por
 WHERE endpoints_mapeados.spec_sha256 IS DISTINCT FROM EXCLUDED.spec_sha256
 """
+
+# ------------------------------------------------------------------ sistema municipal (EddyData)
+# Órgão e fornecedor vindos do EddyData só são criados se faltarem: o nome do PNCP/Receita prevalece.
+GARANTIR_ORGAO = """
+WITH ins AS (
+    INSERT INTO orgaos (cnpj, razao_social) VALUES (%(cnpj)s, %(razao_social)s) ON CONFLICT (cnpj) DO NOTHING
+    RETURNING id
+)
+SELECT id FROM ins UNION ALL SELECT id FROM orgaos WHERE cnpj = %(cnpj)s LIMIT 1
+"""
+
+GARANTIR_FORNECEDOR = """
+WITH ins AS (
+    INSERT INTO fornecedores (cnpj_cpf, tipo_pessoa, razao_social)
+    VALUES (%(cnpj_cpf)s, %(tipo_pessoa)s, %(razao_social)s) ON CONFLICT (cnpj_cpf) DO NOTHING RETURNING id
+)
+SELECT id FROM ins UNION ALL SELECT id FROM fornecedores WHERE cnpj_cpf = %(cnpj_cpf)s LIMIT 1
+"""
+
+UPSERT_UNIDADE = """
+WITH ins AS (
+    INSERT INTO unidades_orcamentarias (orgao_id, codigo, nome) VALUES (%(orgao_id)s, %(codigo)s, %(nome)s)
+    ON CONFLICT (orgao_id, codigo) DO UPDATE SET nome = EXCLUDED.nome
+    WHERE unidades_orcamentarias.nome IS DISTINCT FROM EXCLUDED.nome
+    RETURNING id
+)
+SELECT id FROM ins
+UNION ALL
+SELECT id FROM unidades_orcamentarias WHERE orgao_id = %(orgao_id)s AND codigo = %(codigo)s
+LIMIT 1
+"""
+
+_CHAVE_FONTE = ("fonte", "id_fonte")
+_MUNICIPAL: dict[str, tuple[str, tuple[str, ...]]] = {
+    "empenho": ("empenhos", (
+        "fonte", "id_fonte", "orgao_id", "unidade_id", "fornecedor_id", "credor_nome", "numero", "ano", "especie",
+        "tipo_empenho", "data_empenho", "valor", "processo", "historico", "executora_codigo", "executora_nome",
+        "despesa_codigo", "despesa_nome", "subelemento_codigo", "subelemento_nome", "funcao", "subfuncao",
+        "programa", "acao", "fonte_recurso_codigo", "fonte_recurso_nome", "modalidade", "contrato_id_fonte",
+        "contrato_id_pncp", "licitacao_id_pncp", "payload_hash")),
+    "liquidacao": ("liquidacoes", (
+        "fonte", "id_fonte", "empenho_id_fonte", "data_liquidacao", "valor", "anulacao", "anulado_total",
+        "documento", "payload_hash")),
+    "pagamento": ("pagamentos", (
+        "fonte", "id_fonte", "liquidacao_id_fonte", "empenho_id_fonte", "data_pagamento", "valor", "valor_retido",
+        "anulacao", "anulado_total", "documento", "payload_hash")),
+    "contrato": ("contratos_municipais", (
+        "fonte", "id_fonte", "orgao_id", "fornecedor_id", "credor_nome", "numero", "ano", "processo", "tipo",
+        "tipo_contrato", "objeto", "valor", "data_assinatura", "data_inicio", "data_termino", "excluido", "inativo",
+        "id_pncp", "licitacao_id_pncp", "payload_hash")),
+    "aditamento": ("contrato_aditamentos", (
+        "fonte", "id_fonte", "contrato_id_fonte", "numero", "finalidade", "data_aditamento", "data_inicio",
+        "data_termino", "valor_total", "valor_aditado", "mudanca_vigencia", "mudanca_reajuste",
+        "mudanca_favorecido", "payload_hash")),
+}
+UPSERT_MUNICIPAL = {tipo: _upsert_sql(tabela, cols, _CHAVE_FONTE) for tipo, (tabela, cols) in _MUNICIPAL.items()}
 
 # Itens: fila por compra nunca coletada ou atualizada na fonte depois da última coleta de itens.
 LICITACOES_SEM_ITENS = """
@@ -201,6 +257,7 @@ class PostgresSink(Sink):
         self._orgaos: dict[str, int] = {}
         self._fornecedores: dict[str, int] = {}
         self._modalidades: set[int] = set()
+        self._unidades: dict[tuple[int, str], int] = {}
 
     # --------------------------------------------------------------- helpers
     @staticmethod
@@ -236,6 +293,7 @@ class PostgresSink(Sink):
             self._orgaos.clear()
             self._fornecedores.clear()
             self._modalidades.clear()
+            self._unidades.clear()
             raise
 
     @staticmethod
@@ -269,6 +327,35 @@ class PostgresSink(Sink):
             params = r.model_dump()
             params.update(payload=self._json(r.payload), mapeado=self._json(r.mapeado), execucao_id=execucao_id)
             return self._resultado(self._um(UPSERT_REGISTRO_BRUTO, params))
+
+    def _orgao_id_por_cnpj(self, cnpj: str) -> int:
+        if cnpj not in self._orgaos:
+            # razão social provisória: o PNCP preenche a real quando o órgão aparecer lá
+            self._orgaos[cnpj] = self._um(GARANTIR_ORGAO, {"cnpj": cnpj, "razao_social": cnpj})[0]
+        return self._orgaos[cnpj]
+
+    def _garantir_fornecedor(self, f: Fornecedor) -> int:
+        if f.cnpj_cpf not in self._fornecedores:
+            self._fornecedores[f.cnpj_cpf] = self._um(GARANTIR_FORNECEDOR, f.model_dump())[0]
+        return self._fornecedores[f.cnpj_cpf]
+
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+        params = registro.model_dump(exclude={"orgao_cnpj", "fornecedor", "unidade"})
+        with self._transacao():
+            if hasattr(registro, "orgao_cnpj"):
+                params["orgao_id"] = self._orgao_id_por_cnpj(registro.orgao_cnpj)
+            if hasattr(registro, "fornecedor"):
+                params["fornecedor_id"] = self._garantir_fornecedor(registro.fornecedor) if registro.fornecedor \
+                    else None
+            if hasattr(registro, "unidade"):
+                params["unidade_id"] = None
+                if registro.unidade:
+                    chave = (params["orgao_id"], registro.unidade.codigo)
+                    if chave not in self._unidades:
+                        self._unidades[chave] = self._um(UPSERT_UNIDADE, {"orgao_id": chave[0],
+                                                         **registro.unidade.model_dump()})[0]
+                    params["unidade_id"] = self._unidades[chave]
+            return self._resultado(self._um(UPSERT_MUNICIPAL[tipo], params))
 
     def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
         with self.conn.cursor() as cur:

@@ -4,6 +4,7 @@ Exemplos:
   franca-collect pncp coletar --desde 2026-01-01 --ate 2026-01-31            # exibe no console
   franca-collect pncp coletar --incremental --saida postgres                  # rotina diária
   franca-collect pncp abertas --dias 30 --saida jsonl --arquivo abertas.jsonl
+  franca-collect eddydata coletar --incremental --saida postgres            # portal municipal
   franca-collect rea listar
   franca-collect rea sincronizar                                             # YAML → endpoints_mapeados
   franca-collect rea executar transparencia.despesas.empenhos --desde 2026-10-01
@@ -61,6 +62,17 @@ def _parser() -> argparse.ArgumentParser:
     a.add_argument("--dias", type=int, default=60, help="encerramento até N dias à frente")
     _args_saida(a)
 
+    ed = sub.add_parser("eddydata", help="Portal da Transparência municipal (EddyData)").add_subparsers(
+        dest="acao", required=True)
+    ec = ed.add_parser("coletar", help="contratos, aditivos, empenhos, liquidações e pagamentos")
+    ec.add_argument("--desde", type=_data, default=date.today() - timedelta(days=7))
+    ec.add_argument("--ate", type=_data, default=date.today())
+    ec.add_argument("--incremental", action="store_true",
+                    help="retoma cada recurso da última janela com sucesso (15 dias de sobreposição)")
+    ec.add_argument("--recursos", help="tipos separados por vírgula (padrão: todos): "
+                    "contrato,aditamento,empenho,liquidacao,pagamento")
+    _args_saida(ec)
+
     rea = sub.add_parser("rea", help="endpoints mapeados por engenharia reversa").add_subparsers(
         dest="acao", required=True)
     rea.add_parser("listar")
@@ -107,6 +119,25 @@ def _cmd_pncp(args, cfg: Settings) -> int:
               f"  contratações: {resumo.contratacoes}\n  contratos:    {resumo.contratos}\n"
               f"  órgãos (CNPJ): {', '.join(sorted(resumo.cnpjs_orgaos))}", file=sys.stderr)
         return 1 if (resumo.contratacoes.erros or resumo.contratos.erros) else 0
+
+
+def _cmd_eddydata(args, cfg: Settings) -> int:
+    from franca_collectors.eddydata.cliente import criar_cliente
+    from franca_collectors.eddydata.pipeline import RECURSOS, ColetorEddyData
+
+    tipos = [t.strip() for t in args.recursos.split(",")] if args.recursos else list(RECURSOS)
+    desconhecidos = set(tipos) - set(RECURSOS)
+    if desconhecidos:
+        print(f"recursos desconhecidos: {', '.join(sorted(desconhecidos))}", file=sys.stderr)
+        return 2
+    cliente = criar_cliente(cfg.user_agent, cfg.http_retries, timeout=cfg.http_timeout,
+                            delay=max(cfg.http_delay, 1.0))
+    with criar_sink(args.saida, cfg.database_url, args.arquivo) as sink:
+        resumo = ColetorEddyData(cliente, sink).coletar(args.desde, args.ate, tipos, args.incremental)
+    print(f"\nEddyData {args.desde} → {args.ate} ({cliente.requisicoes} requisições)", file=sys.stderr)
+    for tipo, stats in resumo.items():
+        print(f"  {tipo:11} {stats}", file=sys.stderr)
+    return 1 if any(s.erros for s in resumo.values()) else 0
 
 
 def _cmd_rea(args, cfg: Settings) -> int:
@@ -162,7 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s", stream=sys.stderr)
     cfg = Settings.from_env()
-    return _cmd_pncp(args, cfg) if args.grupo == "pncp" else _cmd_rea(args, cfg)
+    comandos = {"pncp": _cmd_pncp, "eddydata": _cmd_eddydata, "rea": _cmd_rea}
+    return comandos[args.grupo](args, cfg)
 
 
 if __name__ == "__main__":

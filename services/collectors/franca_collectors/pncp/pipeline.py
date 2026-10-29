@@ -62,10 +62,10 @@ class ResumoColeta:
 
 def _processar(
     registros: Iterable[dict[str, Any]],
-    normalizar: Callable[[dict[str, Any]], Licitacao | Contrato],
+    normalizar: Callable[[dict[str, Any]], Any],
     salvar: Callable[[Any], str],
     stats: Estatisticas,
-    aceitar: Callable[[Any], bool],
+    aceitar: Callable[[Any], bool] | None = None,
     depois: Callable[[Any], None] | None = None,
 ) -> None:
     for raw in registros:
@@ -74,16 +74,18 @@ def _processar(
             item = normalizar(raw)
         except (ValidationError, KeyError, TypeError, ValueError) as exc:
             stats.erros += 1
-            log.warning("registro inválido (%s): %s", raw.get("numeroControlePNCP", "?"), exc)
+            ident = raw.get("numeroControlePNCP") or raw.get("id", "?")
+            log.warning("registro inválido (%s): %s", ident, exc)
             continue
-        if not aceitar(item):
+        if aceitar is not None and not aceitar(item):
             stats.descartados += 1
             continue
         try:
             stats.resultados[salvar(item)] += 1
         except Exception as exc:  # noqa: BLE001 - erro de gravação de uma linha não derruba a coleta
             stats.erros += 1
-            log.error("falha ao gravar %s: %s", item.id_pncp, exc)
+            ident = getattr(item, "id_pncp", None) or getattr(item, "id_fonte", "?")
+            log.error("falha ao gravar %s: %s", ident, exc)
             continue
         if depois:
             depois(item)

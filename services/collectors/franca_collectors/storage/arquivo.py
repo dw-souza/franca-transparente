@@ -52,6 +52,10 @@ class ConsoleSink(Sink):
     def salvar_registro_bruto(self, r: RegistroBruto, execucao_id: int | None = None) -> Resultado:
         return self._linha(f"{r.endpoint_id}:{r.chave}", f"[{r.endpoint_id}] {r.chave} {r.mapeado or r.payload}")
 
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+        valor = getattr(registro, "valor", None) or getattr(registro, "valor_total", None)
+        return self._linha(f"{tipo}:{registro.id_fonte}", f"[{tipo.upper()}] {registro.id_fonte} · {_brl(valor)}")
+
 
 class JsonlSink(Sink):
     """Uma linha JSON por registro: {"tipo": ..., "dados": {...}}."""
@@ -77,6 +81,9 @@ class JsonlSink(Sink):
     def salvar_registro_bruto(self, r: RegistroBruto, execucao_id: int | None = None) -> Resultado:
         return self._gravar("registro_bruto", r.model_dump(mode="json"))
 
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+        return self._gravar(tipo, registro.model_dump(mode="json"))
+
     def close(self) -> None:
         self._f.close()
 
@@ -92,6 +99,7 @@ class MemoriaSink(Sink):
         self.brutos: dict[tuple[str, str], RegistroBruto] = {}
         self.execucoes: list[dict[str, Any]] = []
         self.itens: dict[str, list[LicitacaoItem]] = {}
+        self.municipal: dict[str, dict[int, Any]] = {}
 
     @staticmethod
     def _upsert(tabela: dict, chave, novo) -> Resultado:
@@ -109,6 +117,9 @@ class MemoriaSink(Sink):
 
     def salvar_registro_bruto(self, r: RegistroBruto, execucao_id: int | None = None) -> Resultado:
         return self._upsert(self.brutos, (r.endpoint_id, r.chave), r)
+
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+        return self._upsert(self.municipal.setdefault(tipo, {}), registro.id_fonte, registro)
 
     def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
         fila = []

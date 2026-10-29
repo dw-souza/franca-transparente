@@ -152,3 +152,102 @@ class LicitacaoItem(_Base):
     data_atualizacao_fonte: datetime | None = None
     payload_hash: str
     resultados: tuple[ItemResultado, ...] = ()
+
+
+# ------------------------------------------------------------------ Portal municipal (EddyData)
+class UnidadeOrcamentaria(_Base):
+    codigo: str
+    nome: str
+
+
+class _RegistroMunicipal(_Base):
+    """Base dos registros do sistema municipal: chave natural é o id do EddyData."""
+
+    id_fonte: int
+    fonte: str = "eddydata"
+    payload_hash: str
+
+
+class ContratoMunicipal(_RegistroMunicipal):
+    orgao_cnpj: str
+    fornecedor: Fornecedor | None = None
+    credor_nome: str | None = None
+    numero: str | None = None
+    ano: int | None = None
+    processo: str | None = None
+    tipo: str | None = None
+    tipo_contrato: str | None = None
+    objeto: str | None = None
+    valor: Decimal | None = None
+    data_assinatura: date | None = None
+    data_inicio: date | None = None
+    data_termino: date | None = None
+    excluido: bool = False
+    inativo: bool = False
+    id_pncp: str | None = None
+    licitacao_id_pncp: str | None = None
+
+
+class Aditamento(_RegistroMunicipal):
+    contrato_id_fonte: int
+    numero: str | None = None
+    finalidade: str | None = None
+    data_aditamento: date | None = None
+    data_inicio: date | None = None
+    data_termino: date | None = None
+    valor_total: Decimal | None = None
+    valor_aditado: Decimal | None = None
+    mudanca_vigencia: bool | None = None
+    mudanca_reajuste: bool | None = None
+    mudanca_favorecido: bool | None = None
+
+
+class Empenho(_RegistroMunicipal):
+    orgao_cnpj: str
+    unidade: UnidadeOrcamentaria | None = None
+    fornecedor: Fornecedor | None = None
+    credor_nome: str | None = None
+    numero: int | None = None
+    ano: int
+    especie: str | None = None
+    tipo_empenho: str | None = None
+    data_empenho: date
+    valor: Decimal
+    processo: str | None = None
+    historico: str | None = None
+    executora_codigo: str | None = None
+    executora_nome: str | None = None
+    despesa_codigo: str | None = None
+    despesa_nome: str | None = None
+    subelemento_codigo: str | None = None
+    subelemento_nome: str | None = None
+    funcao: str | None = None
+    subfuncao: str | None = None
+    programa: str | None = None
+    acao: str | None = None
+    fonte_recurso_codigo: str | None = None
+    fonte_recurso_nome: str | None = None
+    modalidade: str | None = None
+    contrato_id_fonte: int | None = None
+    contrato_id_pncp: str | None = None
+    licitacao_id_pncp: str | None = None
+
+
+class Liquidacao(_RegistroMunicipal):
+    empenho_id_fonte: int
+    data_liquidacao: date
+    valor: Decimal
+    anulacao: bool = False
+    anulado_total: bool = False
+    documento: str | None = None
+
+
+class Pagamento(_RegistroMunicipal):
+    liquidacao_id_fonte: int
+    empenho_id_fonte: int | None = None
+    data_pagamento: date
+    valor: Decimal
+    valor_retido: Decimal | None = None
+    anulacao: bool = False
+    anulado_total: bool = False
+    documento: str | None = None

@@ -20,6 +20,9 @@
 #   negativo (especie EOA); licitacoes.sequencial_pncp + ano casa com o id do PNCP; contrato-aditamentos não aceita
 #   filtro orgao.id (HTTP 500). "favorecido" traz ~72 campos, inclusive dados pessoais e bancários, e "orgao" traz
 #   chave_acesso: coletar só uma lista branca de campos, nunca o objeto inteiro.
+# * Coleta implementada como coletor dedicado (franca_collectors.eddydata, comando `eddydata coletar`), não por
+#   spec YAML: contratos, contrato-aditamentos (filtro contrato.orgao.id), empenhos, liquidacoes e pagamentos.
+#   As entradas transparencia.* abaixo ficam como registro do mapeamento.
 # * O servidor não envia o certificado intermediário (Certum DV TLS G2 R39 CA); clientes Python precisam
 #   de um bundle com ele (nunca verify=False).
 
