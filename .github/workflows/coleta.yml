@@ -1,0 +1,71 @@
+name: Coleta
+
+# Coleta diária do PNCP no banco de produção (secret DATABASE_URL, conexão direta/não pooled).
+# Execução manual (Actions → Coleta → Run workflow) permite recarregar o histórico a partir de uma data.
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 06:00 em Brasília (o cron do GitHub é em UTC e pode atrasar alguns minutos)
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Recarga a partir desta data (AAAA-MM-DD). Vazio = incremental."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coleta          # nunca duas coletas gravando ao mesmo tempo
+  cancel-in-progress: false
+
+env:
+  CODIGO_IBGE: "3516200"
+  # Prefeitura, Câmara, Faculdade de Direito, Uni-FACEF, FEAC, SASSOM (ver .env.example)
+  ORGAOS_CNPJ: "47970769000104,49219538000180,54157748000121,47987136000109,07339703000198,45310125000156"
+  HTTP_USER_AGENT: ${{ vars.HTTP_USER_AGENT || 'PainelTransparenciaFranca/0.1 (+https://github.com/dw-souza/franca-transparente)' }}
+
+jobs:
+  pncp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180   # a recarga desde 2023 levou ~75 min localmente, por causa dos timeouts do PNCP
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          test -n "$DATABASE_URL" || { echo "::error::defina o secret DATABASE_URL"; exit 1; }
+          # O driver do golang-migrate (lib/pq) não conhece channel_binding, que o Neon põe na URL.
+          URL="${DATABASE_URL//&channel_binding=require/}"
+          URL="${URL//channel_binding=require&/}"
+          docker run --rm -v "$PWD/database/migrations:/migrations:ro" migrate/migrate:v4.18.1 \
+            -path=/migrations -database "$URL" up
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/collectors/pyproject.toml
+      - run: pip install "./services/collectors[postgres]"
+
+      - name: Contratações e contratos
+        working-directory: services/collectors
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DESDE: ${{ inputs.desde }}
+        run: |
+          if [ -n "$DESDE" ]; then
+            python -m franca_collectors pncp coletar --desde "$DESDE" --saida postgres
+          else
+            python -m franca_collectors pncp coletar --incremental --saida postgres
+          fi
+
+      - name: Radar de propostas abertas
+        if: ${{ !cancelled() }}
+        working-directory: services/collectors
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m franca_collectors pncp abertas --saida postgres

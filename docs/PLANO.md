@@ -29,8 +29,9 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Carga histórica desde 2023-04-01: 3.075 licitações e 1.483 contratos, todos vinculados à licitação (2026-10-28).
   Franca só passa a publicar no PNCP em volume a partir de 2024.
 - [x] Órgãos descobertos na carga longa e somados a `ORGAOS_CNPJ`: FEAC e SASSOM (6 no total)
-- [ ] Coleta do radar de propostas abertas (`pncp abertas`) agendada
-- [ ] Agendamento diário da coleta incremental (cron/launchd local; depois no servidor)
+- [~] Coleta diária agendada no GitHub Actions (`.github/workflows/coleta.yml`): migrations, incremental do PNCP e
+  radar de propostas abertas, gravando no Neon. Falta criar o banco, o secret `DATABASE_URL` e o primeiro run
+- [ ] Recarga do histórico no Neon (Run workflow com `desde = 2023-04-01`)
 - [ ] Coletar itens e resultados das contratações (`/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens`) para preço unitário
 - [ ] Coletar termos aditivos dos contratos
 - [x] Valores negativos da fonte aceitos no banco (migration 000010); o PNCP publica erros como estimado = -36
@@ -127,4 +128,4 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 ## Decisões pendentes
 
 - 🔒 Provedor e modelo de LLM para resumos e extração do DOMF (Fases 5 e 6)
-- 🔒 Hospedagem (Fase 9)
+- [~] Hospedagem: banco no Neon (plano Free, 1 GB, via Vercel); API, web e destino de longo prazo ainda abertos (Fase 9)

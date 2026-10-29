@@ -10,11 +10,14 @@ permissions:
 
 jobs:
   collectors:
-    name: Coletores (Python)
+    name: Coletores (Python, Postgres ${{ matrix.postgres }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        postgres: ["16", "18"]   # 16 no docker-compose local, 18 no Neon (produção)
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_USER: franca
           POSTGRES_PASSWORD: ci
