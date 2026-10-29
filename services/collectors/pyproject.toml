@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.6",
     "PyYAML>=6.0",
     "tzdata>=2024.1",          # zoneinfo em imagens slim/Windows
+    "bcrypt>=4.1",             # assinatura das requisições do portal EddyData
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,9 @@ franca-collect = "franca_collectors.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["franca_collectors*"]
+
+[tool.setuptools.package-data]
+franca_collectors = ["eddydata/*.pem"]   # intermediário TLS que o servidor do EddyData não envia
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

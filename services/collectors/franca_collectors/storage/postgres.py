@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
-from franca_collectors.models import Contrato, Fornecedor, Licitacao, Orgao, RegistroBruto
+from franca_collectors.models import Contrato, Fornecedor, Licitacao, LicitacaoItem, Orgao, RegistroBruto
 from franca_collectors.storage.base import Resultado, Sink
 
 log = logging.getLogger(__name__)
@@ -124,6 +125,50 @@ ON CONFLICT (id) DO UPDATE SET
 WHERE endpoints_mapeados.spec_sha256 IS DISTINCT FROM EXCLUDED.spec_sha256
 """
 
+# Itens: fila por compra nunca coletada ou atualizada na fonte depois da última coleta de itens.
+LICITACOES_SEM_ITENS = """
+SELECT l.id_pncp, o.cnpj, l.ano, l.sequencial
+  FROM licitacoes l
+  JOIN orgaos o ON o.id = l.orgao_id
+ WHERE l.sequencial IS NOT NULL
+   AND (l.itens_coletados_em IS NULL OR l.data_atualizacao_fonte > l.itens_coletados_em)
+ ORDER BY l.itens_coletados_em NULLS FIRST, l.data_publicacao DESC NULLS LAST
+ LIMIT %(limite)s
+"""
+
+_COLS_ITEM = (
+    "licitacao_id", "numero_item", "descricao", "material_servico", "unidade_medida", "quantidade",
+    "valor_unitario_estimado", "valor_total_estimado", "orcamento_sigiloso", "criterio_julgamento", "situacao",
+    "tem_resultado", "ncm_nbs_codigo", "catalogo_codigo", "payload_hash", "data_atualizacao_fonte",
+)
+_COLS_RESULTADO = (
+    "item_id", "sequencial", "fornecedor_id", "quantidade_homologada", "valor_unitario_homologado",
+    "valor_total_homologado", "percentual_desconto", "porte_fornecedor", "situacao", "data_resultado",
+    "payload_hash", "data_atualizacao_fonte",
+)
+
+
+def _upsert_filho_sql(tabela: str, colunas: tuple[str, ...], chave: tuple[str, str]) -> str:
+    """Upsert por chave composta que devolve (id, inserido); inserido é NULL quando nada mudou."""
+    sets = ", ".join(f"{c} = EXCLUDED.{c}" for c in colunas if c not in chave)
+    return (
+        f"WITH ins AS (\n"
+        f"    INSERT INTO {tabela} ({', '.join(colunas)})\n"
+        f"    VALUES ({', '.join(f'%({c})s' for c in colunas)})\n"
+        f"    ON CONFLICT ({', '.join(chave)}) DO UPDATE SET {sets}\n"
+        f"    WHERE {tabela}.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash\n"
+        f"    RETURNING id, (xmax = 0) AS inserido\n"
+        f")\n"
+        f"SELECT id, inserido FROM ins\n"
+        f"UNION ALL\n"
+        f"SELECT id, NULL FROM {tabela} WHERE {chave[0]} = %({chave[0]})s AND {chave[1]} = %({chave[1]})s\n"
+        f"LIMIT 1"
+    )
+
+
+UPSERT_ITEM = _upsert_filho_sql("licitacao_itens", _COLS_ITEM, ("licitacao_id", "numero_item"))
+UPSERT_RESULTADO = _upsert_filho_sql("licitacao_item_resultados", _COLS_RESULTADO, ("item_id", "sequencial"))
+
 INICIAR_EXECUCAO = """
 INSERT INTO execucoes_coleta (coletor, endpoint_id, parametros, janela_inicio, janela_fim)
 VALUES (%(coletor)s, %(endpoint_id)s, %(parametros)s, %(janela_inicio)s, %(janela_fim)s)
@@ -224,6 +269,31 @@ class PostgresSink(Sink):
             params = r.model_dump()
             params.update(payload=self._json(r.payload), mapeado=self._json(r.mapeado), execucao_id=execucao_id)
             return self._resultado(self._um(UPSERT_REGISTRO_BRUTO, params))
+
+    def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
+        with self.conn.cursor() as cur:
+            cur.execute(LICITACOES_SEM_ITENS, {"limite": limite})
+            return [{"id_pncp": r[0], "cnpj": r[1], "ano": r[2], "sequencial": r[3]} for r in cur.fetchall()]
+
+    def salvar_itens(self, id_pncp: str, itens: list[LicitacaoItem]) -> dict[str, int]:
+        contagem: Counter = Counter()
+        with self._transacao():
+            linha = self._um("SELECT id FROM licitacoes WHERE id_pncp = %(id)s", {"id": id_pncp})
+            if linha is None:
+                raise ValueError(f"licitação {id_pncp} não está no banco")
+            licitacao_id = linha[0]
+            for item in itens:
+                params = item.model_dump(exclude={"resultados"})
+                params["licitacao_id"] = licitacao_id
+                item_id, inserido = self._um(UPSERT_ITEM, params)
+                contagem[self._resultado(None if inserido is None else (inserido,))] += 1
+                for res in item.resultados:
+                    rp = res.model_dump(exclude={"fornecedor"})
+                    rp["item_id"] = item_id
+                    rp["fornecedor_id"] = self._fornecedor_id(res.fornecedor) if res.fornecedor else None
+                    self._um(UPSERT_RESULTADO, rp)
+            self._um("UPDATE licitacoes SET itens_coletados_em = now() WHERE id = %(id)s", {"id": licitacao_id})
+        return dict(contagem)
 
     def sincronizar_endpoint(self, spec: dict[str, Any], spec_sha256: str) -> None:
         descoberta = spec.get("descoberta") or {}

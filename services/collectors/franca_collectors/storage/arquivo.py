@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import IO, Any
 
-from franca_collectors.models import Contrato, Licitacao, RegistroBruto
+from franca_collectors.models import Contrato, Licitacao, LicitacaoItem, RegistroBruto
 from franca_collectors.storage.base import Resultado, Sink
 
 
@@ -91,6 +91,7 @@ class MemoriaSink(Sink):
         self.contratos: dict[str, Contrato] = {}
         self.brutos: dict[tuple[str, str], RegistroBruto] = {}
         self.execucoes: list[dict[str, Any]] = []
+        self.itens: dict[str, list[LicitacaoItem]] = {}
 
     @staticmethod
     def _upsert(tabela: dict, chave, novo) -> Resultado:
@@ -108,6 +109,18 @@ class MemoriaSink(Sink):
 
     def salvar_registro_bruto(self, r: RegistroBruto, execucao_id: int | None = None) -> Resultado:
         return self._upsert(self.brutos, (r.endpoint_id, r.chave), r)
+
+    def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
+        fila = []
+        for l in self.licitacoes.values():
+            if l.id_pncp in self.itens or l.sequencial is None:
+                continue
+            fila.append({"id_pncp": l.id_pncp, "cnpj": l.orgao.cnpj, "ano": l.ano, "sequencial": l.sequencial})
+        return fila[:limite]
+
+    def salvar_itens(self, id_pncp: str, itens: list[LicitacaoItem]) -> dict[str, int]:
+        self.itens[id_pncp] = list(itens)
+        return {"inserido": len(itens)}
 
     def iniciar_execucao(self, coletor, parametros, janela_inicio=None, janela_fim=None, endpoint_id=None):
         self.execucoes.append({"coletor": coletor, "parametros": parametros, "status": "executando",

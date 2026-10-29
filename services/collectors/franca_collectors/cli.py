@@ -53,6 +53,10 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--todas-esferas", action="store_true",
                    help="inclui unidades estaduais/federais sediadas no município")
     _args_saida(c)
+    i = pncp.add_parser("itens", help="itens e resultados das compras pendentes (só --saida postgres)")
+    i.add_argument("--limite", type=int, default=500, help="máximo de compras nesta execução")
+    i.add_argument("--minutos", type=float, help="para depois de N minutos; o restante fica para a próxima")
+    _args_saida(i)
     a = pncp.add_parser("abertas", help="radar: licitações recebendo propostas")
     a.add_argument("--dias", type=int, default=60, help="encerramento até N dias à frente")
     _args_saida(a)
@@ -84,6 +88,15 @@ def _cmd_pncp(args, cfg: Settings) -> int:
     with criar_sink(args.saida, cfg.database_url, args.arquivo) as sink:
         coletor = ColetorPNCP(cliente, sink, cfg.codigo_ibge, cfg.cnpjs_orgaos, modalidades, cfg.janela_dias,
                               esferas=None if getattr(args, "todas_esferas", False) else ("M",))
+        if args.acao == "itens":
+            if args.saida != "postgres":
+                print("pncp itens precisa de --saida postgres (a fila de compras pendentes vem do banco)",
+                      file=sys.stderr)
+                return 2
+            stats = coletor.coletar_itens(args.limite, args.minutos)
+            print(f"\nItens: compras={stats.lidos} itens: {dict(stats.resultados)} erros={stats.erros} "
+                  f"({cliente.requisicoes} requisições)", file=sys.stderr)
+            return 1 if stats.erros else 0
         if args.acao == "abertas":
             stats = coletor.coletar_propostas_abertas(date.today() + timedelta(days=args.dias))
             print(f"\nPropostas abertas: {stats}", file=sys.stderr)

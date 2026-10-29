@@ -12,23 +12,26 @@ Unidades de outras esferas sediadas na cidade (estaduais/federais) são descarta
 from __future__ import annotations
 
 import logging
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+import requests
 from pydantic import ValidationError
 
 from franca_collectors.models import Contrato, Licitacao
 from franca_collectors.pncp.client import PNCPClient, janelas
-from franca_collectors.pncp.normalize import normalizar_contratacao, normalizar_contrato
+from franca_collectors.pncp.normalize import normalizar_contratacao, normalizar_contrato, normalizar_item
 from franca_collectors.storage.base import Sink
 
 log = logging.getLogger(__name__)
 
 COLETOR_CONTRATACOES = "pncp.contratacoes"
 COLETOR_CONTRATOS = "pncp.contratos"
+COLETOR_ITENS = "pncp.itens"
 SOBREPOSICAO_INCREMENTAL = timedelta(days=3)  # republicações/retificações tardias
 
 
@@ -174,6 +177,45 @@ class ColetorPNCP:
                        normalizar_contratacao, self.sink.salvar_licitacao, stats, self._aceitar_contratacao)
 
         return self._executar("pncp.propostas_abertas", hoje, ate, {"codigo_ibge": self.codigo_ibge}, corpo)
+
+    def coletar_itens(self, limite: int = 500, minutos: float | None = None) -> Estatisticas:
+        """Itens e resultados das compras pendentes (nunca coletadas ou atualizadas na fonte depois da última
+        coleta). `minutos` limita a duração: o que sobrar fica para a próxima execução.
+
+        `lidos` conta compras; `resultados` conta itens. Erro de rede/limite derruba a execução (falha fechada);
+        erro de normalização ou gravação de uma compra só conta em `erros`.
+        """
+        prazo = time.monotonic() + minutos * 60 if minutos else None
+        hoje = date.today()
+
+        def corpo(stats: Estatisticas) -> None:
+            for alvo in self.sink.licitacoes_sem_itens(limite):
+                if prazo is not None and time.monotonic() >= prazo:
+                    log.info("itens: tempo esgotado após %d compras; o restante fica para a próxima execução",
+                             stats.lidos)
+                    return
+                stats.lidos += 1
+                cnpj, ano, seq = alvo["cnpj"], alvo["ano"], alvo["sequencial"]
+                try:
+                    brutos = self.cliente.itens_compra(cnpj, ano, seq)
+                except requests.HTTPError as exc:
+                    if exc.response is None or exc.response.status_code != 404:
+                        raise
+                    brutos = []  # compra removida do PNCP: marca como coletada para não travar a fila
+                try:
+                    itens = [normalizar_item(r, self.cliente.resultados_item(cnpj, ano, seq, r["numeroItem"])
+                                             if r.get("temResultado") else None) for r in brutos]
+                except (ValidationError, KeyError, ValueError) as exc:
+                    stats.erros += 1
+                    log.warning("itens de %s inválidos: %s", alvo["id_pncp"], exc)
+                    continue
+                try:
+                    stats.resultados.update(self.sink.salvar_itens(alvo["id_pncp"], itens))
+                except Exception as exc:  # noqa: BLE001 - erro de gravação de uma compra não derruba a coleta
+                    stats.erros += 1
+                    log.error("falha ao gravar itens de %s: %s", alvo["id_pncp"], exc)
+
+        return self._executar(COLETOR_ITENS, hoje, hoje, {"limite": limite, "minutos": minutos}, corpo)
 
     def inicio_incremental(self, padrao: date) -> date:
         """Retoma da última janela com sucesso (com sobreposição) ou usa `padrao`."""

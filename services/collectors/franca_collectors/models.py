@@ -115,3 +115,40 @@ class RegistroBruto(_Base):
     payload: dict[str, Any]
     mapeado: dict[str, Any] | None = None
     payload_hash: str
+
+
+class ItemResultado(_Base):
+    """Resultado (fornecedor vencedor) de um item de contratação."""
+
+    sequencial: int
+    fornecedor: Fornecedor | None = None
+    quantidade_homologada: Decimal | None = None
+    valor_unitario_homologado: Decimal | None = None
+    valor_total_homologado: Decimal | None = None
+    percentual_desconto: Decimal | None = None
+    porte_fornecedor: str | None = None
+    situacao: str | None = None
+    data_resultado: date | None = None
+    data_atualizacao_fonte: datetime | None = None
+    payload_hash: str
+
+
+class LicitacaoItem(_Base):
+    """Item de uma contratação; sem payload_bruto (volume alto, campos úteis já normalizados)."""
+
+    numero_item: int
+    descricao: str
+    material_servico: Literal["M", "S"] | None = None
+    unidade_medida: str | None = None
+    quantidade: Decimal | None = None
+    valor_unitario_estimado: Decimal | None = None
+    valor_total_estimado: Decimal | None = None
+    orcamento_sigiloso: bool = False
+    criterio_julgamento: str | None = None
+    situacao: str | None = None
+    tem_resultado: bool = False
+    ncm_nbs_codigo: str | None = None
+    catalogo_codigo: str | None = None
+    data_atualizacao_fonte: datetime | None = None
+    payload_hash: str
+    resultados: tuple[ItemResultado, ...] = ()

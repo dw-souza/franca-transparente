@@ -216,3 +216,33 @@ def test_pipeline_pncp_grava_no_postgres_e_retoma(sessao_fake, rota_pncp, sink_p
                    "(SELECT count(*) FROM contratos WHERE licitacao_id IS NOT NULL)") == (3, 3, 1)
     assert [r[0] for r in pg.execute("SELECT DISTINCT status FROM execucoes_coleta")] == ["sucesso"]
     assert coletor.inicio_incremental(date(2026, 1, 1)) == date(2026, 10, 24)
+
+
+# --------------------------------------------------------------- qualidade de dado
+def _alertas(pg, view: str, id_pncp: str) -> tuple[str, list[str]]:
+    return _um(pg, f"SELECT natureza, alertas FROM {view} WHERE id_pncp = %s", (id_pncp,))
+
+
+def test_alertas_de_qualidade_das_licitacoes(sink_pg, pg):
+    sink_pg.salvar_licitacao(contratacao(0, valorTotalEstimado=-36, valorTotalHomologado=900000))
+    sink_pg.salvar_licitacao(contratacao(1, valorTotalEstimado=2_000_000_000))
+    sink_pg.salvar_licitacao(contratacao(0, "contratacoes_p2.json", modalidadeId=1, valorTotalEstimado=100,
+                                         valorTotalHomologado=500))       # leilão: lance acima do estimado é normal
+
+    assert _alertas(pg, "vw_licitacoes_qualidade", LIC_12) == \
+        ("despesa", ["valor_negativo", "homologado_divergente"])
+    assert _alertas(pg, "vw_licitacoes_qualidade", "47970769000104-1-000013/2026") == ("despesa", ["valor_atipico"])
+    assert _alertas(pg, "vw_licitacoes_qualidade", "47970769000104-1-000014/2026") == ("receita", ["receita"])
+
+    # Somas por modalidade ignoram o negativo; a contagem de alertas aparece
+    linha = _um(pg, "SELECT qtd, valor_estimado, qtd_com_alerta FROM vw_licitacoes_por_modalidade "
+                    "WHERE modalidade_id = 6")
+    assert linha == (2, 2_000_000_000, 2)
+
+
+def test_alertas_de_qualidade_dos_contratos(sink_pg, pg):
+    sink_pg.salvar_contrato(contrato(0))
+    sink_pg.salvar_contrato(contrato(1, valorGlobal=0, valorInicial=0, receita=True))
+    assert _alertas(pg, "vw_contratos_qualidade", CONTRATO_0) == ("despesa", [])
+    assert _alertas(pg, "vw_contratos_qualidade", "47970769000104-2-000006/2026") == \
+        ("receita", ["receita", "valor_nao_positivo"])

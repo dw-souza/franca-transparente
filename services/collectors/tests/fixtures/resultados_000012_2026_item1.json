@@ -1,0 +1,18 @@
+[
+ {
+  "sequencialResultado": 1,
+  "numeroItem": 1,
+  "niFornecedor": "59225268000174",
+  "tipoPessoa": "PJ",
+  "nomeRazaoSocialFornecedor": "Soquimica Laboratórios Ltda",
+  "porteFornecedorNome": "Demais",
+  "quantidadeHomologada": 1650000.0,
+  "valorUnitarioHomologado": 0.48,
+  "valorTotalHomologado": 792000.0,
+  "percentualDesconto": 0.0,
+  "situacaoCompraItemResultadoNome": "Informado",
+  "dataResultado": "2025-10-02",
+  "dataAtualizacao": "2026-10-16T09:23:32",
+  "numeroControlePNCPCompra": "47970769000104-1-000012/2026"
+ }
+]

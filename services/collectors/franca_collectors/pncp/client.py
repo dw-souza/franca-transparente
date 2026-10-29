@@ -47,16 +47,19 @@ class PNCPClient:
         base_url: str = "https://pncp.gov.br/api/consulta",
         timeout: float = 30.0,
         delay: float = 0.5,
+        api_pncp_url: str | None = None,
     ):
         self.sessao = sessao
         self.base_url = base_url.rstrip("/")
+        # Itens e resultados ficam na API "pncp" (mesmo host, /api/pncp), não na de consulta.
+        self.api_pncp_url = (api_pncp_url or self.base_url.replace("/api/consulta", "/api/pncp")).rstrip("/")
         self.timeout = timeout
         self.throttle = Throttle(delay)
         self.requisicoes = 0
 
     # ------------------------------------------------------------------ HTTP
-    def _get(self, caminho: str, params: dict[str, Any]) -> dict[str, Any] | None:
-        url = f"{self.base_url}{caminho}"
+    def _get(self, caminho: str, params: dict[str, Any], base: str | None = None) -> Any:
+        url = f"{base or self.base_url}{caminho}"
         params = {k: v for k, v in params.items() if v is not None}
         self.throttle.esperar()
         resp = self.sessao.get(url, params=params, timeout=self.timeout)
@@ -147,3 +150,23 @@ class PNCPClient:
             {"dataInicial": _aaaammdd(inicio), "dataFinal": _aaaammdd(fim), "cnpjOrgao": cnpj_orgao},
             max(PAGINA_MIN, min(tamanho, PAGINA_MAX_CONTRATOS)),
         )
+
+    def itens_compra(self, cnpj: str, ano: int, sequencial: int, tamanho: int = 500) -> list[dict[str, Any]]:
+        """GET .../compras/{ano}/{seq}/itens (API pncp). Pagina até somar `/itens/quantidade`, para não depender
+        de o servidor respeitar `tamanhoPagina`; se faltar item, falha em vez de gravar a compra incompleta."""
+        caminho = f"/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens"
+        total = int(self._get(f"{caminho}/quantidade", {}, base=self.api_pncp_url) or 0)
+        itens: list[dict[str, Any]] = []
+        pagina = 1
+        while len(itens) < total:
+            lote = self._get(caminho, {"pagina": pagina, "tamanhoPagina": tamanho}, base=self.api_pncp_url) or []
+            if not lote:
+                raise RespostaInvalida(f"{caminho}: esperados {total} itens, vieram {len(itens)}")
+            itens.extend(lote)
+            pagina += 1
+        return itens
+
+    def resultados_item(self, cnpj: str, ano: int, sequencial: int, numero_item: int) -> list[dict[str, Any]]:
+        """GET /v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens/{n}/resultados (API pncp)."""
+        return self._get(f"/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens/{numero_item}/resultados", {},
+                         base=self.api_pncp_url) or []

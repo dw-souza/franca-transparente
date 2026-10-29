@@ -45,5 +45,7 @@ class Throttle:
 class RespostaInvalida(RuntimeError):
     """A fonte respondeu algo que não é o JSON esperado (página de desafio, HTML de erro...).
 
-    O coletor falha fechado: nunca tenta contornar CAPTCHA/WAF nem grava dado duvidoso.
+    O coletor falha fechado: nunca tenta contornar CAPTCHA/WAF nem grava dado duvidoso. Única exceção documentada:
+    a assinatura do acesso anônimo do portal EddyData, reproduzida como a página pública faz
+    (``franca_collectors.eddydata.cliente``).
     """

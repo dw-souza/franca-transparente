@@ -29,14 +29,17 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Carga histórica desde 2023-04-01: 3.075 licitações e 1.483 contratos, todos vinculados à licitação (2026-10-28).
   Franca só passa a publicar no PNCP em volume a partir de 2024.
 - [x] Órgãos descobertos na carga longa e somados a `ORGAOS_CNPJ`: FEAC e SASSOM (6 no total)
-- [~] Coleta diária agendada no GitHub Actions (`.github/workflows/coleta.yml`): migrations, incremental do PNCP e
-  radar de propostas abertas, gravando no Neon. Falta criar o banco, o secret `DATABASE_URL` e o primeiro run
-- [ ] Recarga do histórico no Neon (Run workflow com `desde = 2023-04-01`)
-- [ ] Coletar itens e resultados das contratações (`/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens`) para preço unitário
-- [ ] Coletar termos aditivos dos contratos
+- [x] Coleta diária no GitHub Actions (`.github/workflows/coleta.yml`, 06:00 de Brasília): migrations, incremental
+  do PNCP e radar de propostas abertas, gravando no Neon (2026-10-29)
+- [x] Histórico recarregado no Neon desde 2023-04-01: 3.121 licitações e 1.484 contratos, sem erros (2026-10-29)
+- [x] Itens e resultados por item (migration 000011, `pncp itens`, view `vw_precos_itens`): fila por compra,
+  ~17 itens por compra, limite de 60 min por dia no workflow até completar o histórico (2026-10-29)
+- [x] Termos aditivos: Franca não publica no PNCP (15 maiores contratos de 2024 sem termos); vêm do EddyData
+  (`contrato-aditamentos`, Fase 2)
 - [x] Valores negativos da fonte aceitos no banco (migration 000010); o PNCP publica erros como estimado = -36
-- [ ] Qualidade de dado: marcar valores fora da curva e negativos; separar receita (leilão/alienação, concessão)
-  de despesa nos totais do painel. Ex.: leilão de terreno do Uni-FACEF com estimado de R$ 7,03 bi
+- [x] Qualidade de dado (migration 000012): `vw_licitacoes_qualidade` e `vw_contratos_qualidade` com natureza
+  (receita/despesa) e alertas (valor negativo/zero/atípico, homologado divergente, vigência invertida);
+  somas por modalidade sem negativos (2026-10-29)
 
 ## Fase 2 — Portal da Transparência (EddyData)
 

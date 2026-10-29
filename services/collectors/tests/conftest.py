@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -85,6 +86,15 @@ def rota_pncp():
             if params.get("cnpjOrgao") == "47970769000104":
                 return 200, fixture("contratos_p1.json")
             return 204, None
+        # API "pncp": itens da compra 12/2026 (2 itens, o 1º com resultado); demais compras sem itens
+        if m := re.search(r"/api/pncp/v1/orgaos/\d+/compras/(\d+)/(\d+)/itens(/quantidade|/(\d+)/resultados)?$", path):
+            itens = fixture("itens_000012_2026.json") if (m[1], m[2]) == ("2026", "12") else []
+            if m[3] == "/quantidade":
+                return 200, len(itens)
+            if m[4]:
+                return 200, fixture("resultados_000012_2026_item1.json") if m[4] == "1" and itens else []
+            pagina, tamanho = int(params["pagina"]), int(params["tamanhoPagina"])
+            return 200, itens[(pagina - 1) * tamanho: pagina * tamanho]
         return 404, {"erro": "rota desconhecida"}
 
     return rota

@@ -28,12 +28,13 @@ def texto(valor: Any) -> str | None:
     return s or None
 
 
-def decimal_ou_none(valor: Any) -> Decimal | None:
+def decimal_ou_none(valor: Any, casas: int = 2) -> Decimal | None:
+    """Valor monetário (2 casas) ou, com `casas=4`, preço unitário/quantidade (ex.: R$ 0,1234 por unidade)."""
     if valor is None or valor == "":
         return None
     try:
         # str() evita artefatos de float binário (0.1 + 0.2)
-        return Decimal(str(valor)).quantize(Decimal("0.01"))
+        return Decimal(str(valor)).quantize(Decimal(1).scaleb(-casas))
     except (InvalidOperation, ValueError):
         return None
 

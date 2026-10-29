@@ -1,189 +1,179 @@
 #!/usr/bin/env python3
-"""Sonda do Portal da Transparência de Franca (EddyData): poucas leituras, só GET, para mapear a API.
+"""Sonda do Portal da Transparência de Franca (EddyData) — rodada 2: só GET, poucas dezenas de requisições.
 
-Reproduz o que a página pública faz para qualquer visitante anônimo:
-  1. POST usuarios/token-publico  → JWT com {iat, id, chave}
-  2. em cada GET, os cabeçalhos Authorization ("JWT " + token), agora (epoch ms) e
-     codigo = bcrypt(((agora - iat) / id).toFixed(0), sal=chave)
+Usa o mesmo cliente do coletor (franca_collectors.eddydata.cliente) e responde ao que falta para a Fase 2:
+  A. volumes por ano (dimensiona banco e tempo de coleta);
+  B. relações: secretaria (ficha → executora → unidade), classificação da despesa e o vínculo
+     empenho → contrato/licitação e contrato → licitação (para cruzar com o PNCP);
+  C. filtro que funciona em contrato-aditamentos;
+  D. tamanho máximo de página aceito;
+  E. campos de favorecido, para a lista branca (só nomes e tipos, sem valores).
 
-O servidor não envia o certificado intermediário; baixamos o da Certum (endereço do próprio certificado)
-e montamos um bundle com o certifi. A verificação TLS continua ligada.
-
-Uso (na raiz do repositório):
-  .venv/bin/pip install bcrypt
-  .venv/bin/python scripts/sonda_eddydata.py
-Saída: dados/eddydata/relatorio.txt e uma amostra JSON por recurso (dados/ está no .gitignore).
-As amostras podem conter dados pessoais (CPF de credor pessoa física): não publique.
+Uso (na raiz do repositório, com o .venv ativo):
+  pip install -e "services/collectors[postgres,dev]"
+  python scripts/sonda_eddydata.py
+Saída: dados/eddydata/relatorio2.txt (sem dados pessoais) e amostras JSON em dados/eddydata/sonda2/ (com dados
+pessoais de credores: ficam fora do git, não publique).
 """
 
 from __future__ import annotations
 
-import base64
 import json
-import math
-import ssl
+import re
 import sys
 import time
-import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 
-import bcrypt
-import certifi
-import requests
+from franca_collectors.eddydata.cliente import criar_cliente
 
-API = "https://eddydata-api.franca.sp.gov.br/api/v1/franca"
-CIDADE = 1
-CODIGO_ORGAO = "020000"  # environment.orgao do bundle do portal
-INTERMEDIARIO = "http://certumdvtlsg2r39ca.repository.certum.pl/certumdvtlsg2r39ca.cer"
 USER_AGENT = "PainelTransparenciaFranca/0.1 (+https://github.com/dw-souza/franca-transparente)"
-PAUSA = 2.0  # segundos entre requisições
 SAIDA = Path("dados/eddydata")
-
+AMOSTRAS = SAIDA / "sonda2"
 FIM = date.today()
 INICIO = FIM - timedelta(days=30)
+SENSIVEL = re.compile(r"cpf|rg$|senha|chave|token|email|telefone|celular|nascimento|endereco|cep|banco|agencia|"
+                      r"conta|pis|nis|responsavel|ordenador|tesoureiro|presidente|assinatura|gestor", re.I)
 
-# recurso → (campo de data usado pela tela pública, relations da tela pública)
-RECURSOS = {
-    "licitacoes": ("data_abertura", None),
-    "contratos": ("data_inicio", "orgao,favorecido"),
-    "empenhos": ("data_empenho", "favorecido,subelemento,compra,ficha,ficha.acao"),
-    "liquidacoes": ("data_liquidacao", "empenho,empenho.favorecido"),
-    "pagamentos": ("data_pagamento", "conta,liquidacao,liquidacao.empenho,liquidacao.empenho.favorecido,exercicio,orgao"),
-    "atas-registro-precos": (None, None),
-    "contrato-aditamentos": (None, None),
-}
-
-log_linhas: list[str] = []
+linhas: list[str] = []
 
 
 def log(msg: str = "") -> None:
     print(msg)
-    log_linhas.append(msg)
+    linhas.append(msg)
 
 
-def bundle_ca() -> str:
-    destino = SAIDA / "ca-bundle.pem"
-    if not destino.exists():
-        der = urllib.request.urlopen(INTERMEDIARIO, timeout=30).read()
-        pem = ssl.DER_cert_to_PEM_cert(der) if not der.startswith(b"-----BEGIN") else der.decode()
-        destino.write_text(Path(certifi.where()).read_text() + "\n" + pem)
-    return str(destino)
+def valor(d, caminho: str):
+    for parte in caminho.split("."):
+        if not isinstance(d, dict):
+            return None
+        d = d.get(parte)
+    return d
 
 
-def claims(token: str) -> dict:
-    corpo = token.split(".")[1]
-    return json.loads(base64.urlsafe_b64decode(corpo + "=" * (-len(corpo) % 4)))
-
-
-def js_to_fixed0(numerador: int, divisor: int) -> str:
-    """`(numerador / divisor).toFixed(0)` com a semântica do JavaScript.
-
-    O token público vem com id=0: no JS a divisão dá Infinity (ou NaN para 0/0), e toFixed devolve o texto.
-    toFixed arredonda meio para cima no módulo, diferente do arredondamento bancário do Python.
-    """
-    if divisor == 0:
-        return "NaN" if numerador == 0 else ("Infinity" if numerador > 0 else "-Infinity")
-    x = numerador / divisor
-    n = math.floor(abs(x) + 0.5)
-    return f"-{n}" if x < 0 else str(n)  # o JS também devolve "-0"
-
-
-def descrever(dados) -> str:
-    """Resumo da forma do JSON: chaves de topo, totais e campos do primeiro registro."""
-    if isinstance(dados, list):
-        primeiro = dados[0] if dados else None
-        return f"lista com {len(dados)} item(ns); campos do 1º: {sorted(primeiro)[:40] if isinstance(primeiro, dict) else primeiro!r}"
-    if isinstance(dados, dict):
-        partes = [f"chaves: {sorted(dados)[:20]}"]
-        for k, v in dados.items():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                partes.append(f"{k}={v}")
-            if isinstance(v, list) and v and isinstance(v[0], dict):
-                partes.append(f"'{k}' tem {len(v)} registro(s); campos do 1º: {sorted(v[0])[:40]}")
-        return "; ".join(partes)
-    return repr(dados)[:200]
+def mostrar(registro: dict, caminhos: list[str]) -> None:
+    for c in caminhos:
+        v = valor(registro, c)
+        chave = c.split(".")[-1]
+        if chave == "cpf_cnpj" and v:
+            digitos = re.sub(r"\W", "", str(v))
+            v = f"<{'CNPJ' if len(digitos) == 14 else 'CPF' if len(digitos) == 11 else '?'} oculto>"
+        elif SENSIVEL.search(chave) and v not in (None, ""):
+            v = "<oculto>"
+        elif isinstance(v, dict):
+            v = f"{{{', '.join(sorted(v)[:25])}}}"
+        elif isinstance(v, str) and len(v) > 80:
+            v = v[:80] + "…"
+        log(f"     {c:42} {v}")
 
 
 def main() -> int:
-    SAIDA.mkdir(parents=True, exist_ok=True)
-    s = requests.Session()
-    s.verify = bundle_ca()
-    s.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
-    log(f"sonda EddyData {time.strftime('%F %T')} · período {INICIO} → {FIM}")
+    AMOSTRAS.mkdir(parents=True, exist_ok=True)
+    cli = criar_cliente(USER_AGENT, delay=1.5)
+    log(f"sonda EddyData (rodada 2) {time.strftime('%F %T')} · amostras de {INICIO} a {FIM}")
+    orgao = cli.orgao_id()
+    log(f"órgão id={orgao}")
+    base = {"ignoreCondObrig": "true", "orgao.id": orgao}
 
-    # 1. token público
-    r = s.post(f"{API}/usuarios/token-publico", headers={"Content-Type": "application/json"}, timeout=30)
-    log(f"\n== token-publico: HTTP {r.status_code} {r.headers.get('content-type')}")
-    try:
-        corpo = r.json()
-    except ValueError:
-        log(f"   resposta não é JSON: {r.text[:300]!r}")
-        return 1
-    token = corpo.get("token") if isinstance(corpo, dict) else corpo
-    if not isinstance(token, str) or token.count(".") != 2:
-        log(f"   formato inesperado: {json.dumps(corpo, ensure_ascii=False)[:500]}")
-        return 1
-    if isinstance(corpo, dict):
-        log(f"   outras chaves da resposta: {sorted(k for k in corpo if k != 'token')}")
-    c = claims(token)
-    log(f"   claims do JWT: {sorted(c)} · iat={c.get('iat')} exp={c.get('exp')} id={c.get('id')} "
-        f"sistema={c.get('sistema')} administrador={c.get('administrador')}")
-    log(f"   sal bcrypt: prefixo {str(c.get('chave'))[:7]!r}, {len(str(c.get('chave')))} caracteres")
-    autorizacao = "JWT " + token  # a página guarda login.token = 'JWT ' + dados.token
-
-    def assinados() -> dict:
-        agora = int(time.time() * 1000)
-        comparar = js_to_fixed0(agora - int(c["iat"]), int(c["id"]))
-        codigo = bcrypt.hashpw(comparar.encode(), str(c["chave"]).encode()).decode()
-        # O serviço base das listagens manda o horário em "agora"; uma variante antiga usa "data".
-        return {"Authorization": autorizacao, "Content-Type": "application/json",
-                "agora": str(agora), "data": str(agora), "codigo": codigo}
-
-    log(f"   hash gerado: prefixo {assinados()['codigo'][:7]!r}")
-
-    def get(caminho: str, params: dict | None = None, nome: str | None = None):
-        time.sleep(PAUSA)
-        r = s.get(f"{API}/{CIDADE}/{caminho}", params=params, headers=assinados(), timeout=60)
-        log(f"\n== GET {caminho} {params or ''}\n   HTTP {r.status_code} {r.headers.get('content-type')} {len(r.content)} bytes")
+    def get(nome, caminho, params, salvar=True):
+        t = time.time()
         try:
-            dados = r.json()
-        except ValueError:
-            log(f"   não é JSON: {r.text[:300]!r}")
+            dados = cli.get(caminho, params)
+        except Exception as exc:  # noqa: BLE001 - a sonda registra a falha e segue
+            log(f"\n== {nome}: FALHOU ({type(exc).__name__}) {str(exc)[:300]}")
             return None
-        log(f"   {descrever(dados)}")
-        if r.status_code >= 400:
-            log(f"   corpo: {json.dumps(dados, ensure_ascii=False)[:400]}")
-        elif nome:
-            (SAIDA / f"{nome}.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2))
+        log(f"\n== {nome}: total={dados.get('numberOfElements')} páginas={dados.get('totalPages')} "
+            f"veio={len(dados.get('content') or [])} ({time.time() - t:.1f}s)")
+        if salvar:
+            (AMOSTRAS / f"{nome}.json").write_text(json.dumps(dados, ensure_ascii=False, indent=2))
         return dados
 
-    # 2. órgão e exercício, pelas mesmas rotas que a página usa ao abrir (environment: orgao '020000', cidade 1)
-    orgao_id = 1
-    orgaos = get("orgaos/filtrar", {"codigo": CODIGO_ORGAO, "cidade.id": CIDADE, "relations": "brasao"}, nome="orgaos")
-    conteudo = orgaos.get("content") if isinstance(orgaos, dict) else None
-    if conteudo:
-        o = conteudo[0]
-        orgao_id = o.get("id", orgao_id)
-        log(f"   órgão id={o.get('id')} codigo={o.get('codigo')} cnpj={o.get('cnpj')} nome={o.get('nome')}")
-    get("exercicios/filtrar", {"ano": FIM.year, "cidade_id": CIDADE}, nome="exercicios")
+    # A. volumes por ano -------------------------------------------------------------------------
+    log("\n######## A. volumes por ano (limite 1, só o total)")
+    datas = {"licitacoes": "data_abertura", "contratos": "data_inicio", "empenhos": "data_empenho",
+             "liquidacoes": "data_liquidacao", "pagamentos": "data_pagamento"}
+    for recurso, campo in datas.items():
+        for ano in (2024, 2025, 2026):
+            periodo = {f"{campo}$ge": f"{ano}-01-01", f"{campo}$le": f"{ano}-12-31"}
+            get(f"volume_{recurso}_{ano}", f"{recurso}/1/1", {**base, **periodo}, salvar=False)
+    ano_2025 = {"data_empenho$ge": "2025-01-01", "data_empenho$le": "2025-12-31"}
+    for rel in ("contrato", "licitacao"):
+        get(f"volume_empenhos_2025_com_{rel}", "empenhos/1/1", {**base, **ano_2025, f"{rel}$not_null": ""},
+            salvar=False)
 
-    # 3. uma página pequena de cada recurso, com os filtros que a tela pública usa
-    for recurso, (campo_data, relations) in RECURSOS.items():
-        params = {"ignoreCondObrig": "true", "orgao.id": orgao_id}
-        if campo_data:
-            params |= {f"{campo_data}$ge": INICIO.isoformat(), f"{campo_data}$le": FIM.isoformat()}
-        if relations:
-            params["relations"] = relations
-        get(f"{recurso}/1/3", params, nome=recurso)
+    # B. relações --------------------------------------------------------------------------------
+    log("\n######## B. relações")
+    mes_emp = {"data_empenho$ge": INICIO.isoformat(), "data_empenho$le": FIM.isoformat()}
+    rel_emp = ("favorecido,subelemento,modalidade,contrato,licitacao,ficha,ficha.executora,ficha.executora.unidade,"
+               "ficha.despesa,ficha.funcao,ficha.subfuncao,ficha.programa,ficha.acao,ficha.recurso")
+    d = get("empenhos_com_contrato", "empenhos/1/3",
+            {**base, **mes_emp, "contrato$not_null": "", "relations": rel_emp})
+    for r in (d or {}).get("content") or []:
+        log("   -- empenho")
+        mostrar(r, ["numero", "especie", "tipo_empenho", "valor_empenho", "processo", "sequencial_pncp",
+                    "favorecido.nome", "favorecido.cpf_cnpj", "subelemento.codigo", "subelemento.nome",
+                    "modalidade.codigo", "modalidade.nome",
+                    "ficha.numero", "ficha.executora.codigo", "ficha.executora.nome",
+                    "ficha.executora.unidade.codigo", "ficha.executora.unidade.nome",
+                    "ficha.despesa.codigo", "ficha.despesa.nome", "ficha.funcao.codigo", "ficha.funcao.nome",
+                    "ficha.subfuncao.nome", "ficha.programa.nome", "ficha.acao.nome", "ficha.recurso.codigo",
+                    "ficha.recurso.nome", "contrato", "contrato.numero", "contrato.ano", "contrato.sequencial_pncp",
+                    "contrato.processo", "contrato.valor_contrato", "licitacao", "licitacao.numero",
+                    "licitacao.processo", "licitacao.sequencial_pncp"])
+
+    mes_ctr = {"data_inicio$ge": INICIO.isoformat(), "data_inicio$le": FIM.isoformat()}
+    d = get("contratos_com_licitacao", "contratos/1/3", {**base, **mes_ctr, "excluido": "false",
+            "relations": "favorecido,licitacao,licitacao.modalidade,modalidade"})
+    for r in (d or {}).get("content") or []:
+        log("   -- contrato")
+        mostrar(r, ["numero", "ano", "tipo", "tipo_contrato", "processo", "sequencial_pncp", "cadastrado_pncp",
+                    "excluido", "inativo", "valor_contrato", "data_assinatura", "data_termino", "favorecido.nome",
+                    "favorecido.cpf_cnpj", "modalidade.nome", "licitacao.numero", "licitacao.processo",
+                    "licitacao.sequencial_pncp", "licitacao.modalidade.nome"])
+
+    mes_lic = {"data_abertura$ge": INICIO.isoformat(), "data_abertura$le": FIM.isoformat()}
+    get("licitacoes_com_modalidade", "licitacoes/1/3", {**base, **mes_lic, "relations": "modalidade"})
+
+    # C. aditamentos -----------------------------------------------------------------------------
+    log("\n######## C. contrato-aditamentos: qual filtro funciona")
+    semestre = {"data_aditamento$ge": (FIM - timedelta(days=180)).isoformat(),
+                "data_aditamento$le": FIM.isoformat(), "relations": "contrato"}
+    variantes = {
+        "contrato.orgao.id": {"ignoreCondObrig": "true", "contrato.orgao.id": orgao},
+        "so_data": {"ignoreCondObrig": "true"},
+        "contrato.orgao.id_sem_ignore": {"contrato.orgao.id": orgao},
+    }
+    for nome, extra in variantes.items():
+        d = get(f"aditamentos_{nome}", "contrato-aditamentos/1/3", {**semestre, **extra})
+        for r in (d or {}).get("content") or []:
+            mostrar(r, ["numero", "tipo", "finalidade", "data_aditamento", "valor_total", "valor_aditado",
+                        "sequencial_pncp", "contrato.numero", "contrato.ano", "contrato.sequencial_pncp"])
+
+    # D. tamanho de página -----------------------------------------------------------------------
+    log("\n######## D. tamanho máximo de página (empenhos de uma semana, sem relações)")
+    semana = {**base, "data_empenho$ge": (FIM - timedelta(days=7)).isoformat(), "data_empenho$le": FIM.isoformat()}
+    for limite in (100, 500, 1000):
+        get(f"pagina_{limite}", f"empenhos/1/{limite}", semana, salvar=False)
+
+    # E. campos de favorecido --------------------------------------------------------------------
+    log("\n######## E. campos de favorecido (nomes e tipos; valores omitidos)")
+    d = get("favorecido_campos", "favorecidos/1/1", {"ignoreCondObrig": "true", "relations": "tipo"},
+            salvar=False)
+    for r in (d or {}).get("content") or []:
+        for k in sorted(r):
+            v = r[k]
+            tipo = type(v).__name__ if not isinstance(v, dict) else "{" + ",".join(sorted(v)[:8]) + "}"
+            log(f"     {k:32} {tipo}{'  <- sensível' if SENSIVEL.search(k) else ''}")
+
+    log(f"\nrequisições: {cli.requisicoes}")
     return 0
 
 
 if __name__ == "__main__":
     try:
-        codigo_saida = main()
+        codigo = main()
     finally:  # grava o relatório mesmo se a sonda parar no meio
         SAIDA.mkdir(parents=True, exist_ok=True)
-        (SAIDA / "relatorio.txt").write_text("\n".join(log_linhas) + "\n", encoding="utf-8")
-        print(f"\nrelatório em {SAIDA / 'relatorio.txt'}; amostras JSON em {SAIDA}/")
-    sys.exit(codigo_saida)
+        (SAIDA / "relatorio2.txt").write_text("\n".join(linhas) + "\n", encoding="utf-8")
+        print(f"\nrelatório em {SAIDA / 'relatorio2.txt'}; amostras em {AMOSTRAS}/")
+    sys.exit(codigo)

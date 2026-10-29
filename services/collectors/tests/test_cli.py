@@ -73,6 +73,12 @@ def test_pncp_abertas_console(pncp_fake, rota_pncp, capsys):
     assert "[LICITAÇÃO]" in out.out and "Propostas abertas" in out.err
 
 
+def test_pncp_itens_exige_postgres(pncp_fake, rota_pncp, capsys):
+    pncp_fake(rota_pncp)
+    assert cli.main(["pncp", "itens"]) == 2
+    assert "--saida postgres" in capsys.readouterr().err
+
+
 def test_saida_postgres_sem_database_url_aborta(pncp_fake, rota_pncp):
     pncp_fake(rota_pncp)
     with pytest.raises(SystemExit, match="DATABASE_URL"):

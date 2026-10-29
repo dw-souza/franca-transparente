@@ -1,0 +1,36 @@
+[
+ {
+  "numeroItem": 1,
+  "descricao": "Item 1 - Lote 1: FITA COM ÁREA REAGENTE PARA VERIFICAÇÃO DE GLICEMIA",
+  "materialOuServico": "M",
+  "materialOuServicoNome": "Material",
+  "valorUnitarioEstimado": 0.49,
+  "valorTotal": 808500.0,
+  "quantidade": 1650000.0,
+  "unidadeMedida": "Unidade",
+  "orcamentoSigiloso": false,
+  "criterioJulgamentoId": 1,
+  "criterioJulgamentoNome": "Menor preço",
+  "situacaoCompraItem": 2,
+  "situacaoCompraItemNome": "Homologado",
+  "temResultado": true,
+  "ncmNbsCodigo": null,
+  "catalogoCodigoItem": null,
+  "dataInclusao": "2026-10-16T09:23:31",
+  "dataAtualizacao": "2026-10-16T09:23:32"
+ },
+ {
+  "numeroItem": 2,
+  "descricao": "Item 2 - Lote 1: LANCETA DESCARTÁVEL",
+  "materialOuServico": "M",
+  "valorUnitarioEstimado": 0.1234,
+  "valorTotal": 12340.0,
+  "quantidade": 100000.0,
+  "unidadeMedida": "Unidade",
+  "orcamentoSigiloso": false,
+  "criterioJulgamentoNome": "Menor preço",
+  "situacaoCompraItemNome": "Deserto",
+  "temResultado": false,
+  "dataAtualizacao": "2026-10-16T09:23:32"
+ }
+]

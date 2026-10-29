@@ -21,7 +21,9 @@ franca-transparencia/
 │       ├── 000007_alertas                  assinaturas + disparos deduplicados
 │       ├── 000008_coleta_e_endpoints       registro REA, execuções, camada bruta
 │       ├── 000009_views_painel             views dos cards e rankings
-│       └── 000010_valores_sem_check        valores negativos da fonte entram (sinal de qualidade)
+│       ├── 000010_valores_sem_check        valores negativos da fonte entram (sinal de qualidade)
+│       ├── 000011_itens_licitacao          itens, resultados por item e preços praticados
+│       └── 000012_qualidade_dados          natureza (receita/despesa) e alertas de qualidade
 ├── services/
 │   ├── collectors/             # Python 3.11+
 │   │   ├── franca_collectors/

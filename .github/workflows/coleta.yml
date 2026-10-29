@@ -63,6 +63,15 @@ jobs:
             python -m franca_collectors pncp coletar --incremental --saida postgres
           fi
 
+      - name: Itens e resultados das compras
+        if: ${{ !cancelled() }}
+        working-directory: services/collectors
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Fila de compras sem itens (ou atualizadas na fonte); ~17 itens por compra e 1 requisição por resultado.
+        # O histórico (~3 mil compras) se completa em alguns dias; depois só entra o que mudou.
+        run: python -m franca_collectors pncp itens --limite 5000 --minutos 60 --saida postgres
+
       - name: Radar de propostas abertas
         if: ${{ !cancelled() }}
         working-directory: services/collectors

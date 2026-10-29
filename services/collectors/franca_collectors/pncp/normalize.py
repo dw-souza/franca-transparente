@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from franca_collectors.models import Contrato, Fornecedor, Licitacao, Orgao
+from franca_collectors.models import Contrato, Fornecedor, ItemResultado, Licitacao, LicitacaoItem, Orgao
 from franca_collectors.normalizacao import (
     caminho,
     data,
@@ -110,4 +110,48 @@ def normalizar_contrato(raw: dict[str, Any]) -> Contrato:
         data_atualizacao_fonte=data_hora(raw.get("dataAtualizacaoGlobal") or raw.get("dataAtualizacao")),
         payload_hash=hash_payload(raw),
         payload_bruto=raw,
+    )
+
+
+def normalizar_resultado(raw: dict[str, Any]) -> ItemResultado:
+    ni = raw.get("niFornecedor")
+    tipo_pessoa = (texto(raw.get("tipoPessoa")) or "PJ").upper()
+    return ItemResultado(
+        sequencial=int(raw.get("sequencialResultado") or 1),
+        fornecedor=Fornecedor(
+            cnpj_cpf=ni,
+            tipo_pessoa=tipo_pessoa if tipo_pessoa in ("PJ", "PF", "PE") else "PJ",
+            razao_social=texto(raw.get("nomeRazaoSocialFornecedor")) or "(sem razão social)",
+        ) if ni else None,
+        quantidade_homologada=decimal_ou_none(raw.get("quantidadeHomologada"), casas=4),
+        valor_unitario_homologado=decimal_ou_none(raw.get("valorUnitarioHomologado"), casas=4),
+        valor_total_homologado=decimal_ou_none(raw.get("valorTotalHomologado")),
+        percentual_desconto=decimal_ou_none(raw.get("percentualDesconto"), casas=4),
+        porte_fornecedor=texto(raw.get("porteFornecedorNome")),
+        situacao=texto(raw.get("situacaoCompraItemResultadoNome")),
+        data_resultado=data(raw.get("dataResultado")),
+        data_atualizacao_fonte=data_hora(raw.get("dataAtualizacao")),
+        payload_hash=hash_payload(raw),
+    )
+
+
+def normalizar_item(raw: dict[str, Any], resultados: list[dict[str, Any]] | None = None) -> LicitacaoItem:
+    tipo = (texto(raw.get("materialOuServico")) or "").upper()
+    return LicitacaoItem(
+        numero_item=int(raw["numeroItem"]),
+        descricao=texto(raw.get("descricao")) or "(sem descrição)",
+        material_servico=tipo if tipo in ("M", "S") else None,
+        unidade_medida=texto(raw.get("unidadeMedida")),
+        quantidade=decimal_ou_none(raw.get("quantidade"), casas=4),
+        valor_unitario_estimado=decimal_ou_none(raw.get("valorUnitarioEstimado"), casas=4),
+        valor_total_estimado=decimal_ou_none(raw.get("valorTotal")),
+        orcamento_sigiloso=bool(raw.get("orcamentoSigiloso")),
+        criterio_julgamento=texto(raw.get("criterioJulgamentoNome")),
+        situacao=texto(raw.get("situacaoCompraItemNome")),
+        tem_resultado=bool(raw.get("temResultado")),
+        ncm_nbs_codigo=texto(raw.get("ncmNbsCodigo")),
+        catalogo_codigo=texto(raw.get("catalogoCodigoItem")),
+        data_atualizacao_fonte=data_hora(raw.get("dataAtualizacao")),
+        payload_hash=hash_payload(raw),
+        resultados=tuple(normalizar_resultado(r) for r in resultados or ()),
     )
