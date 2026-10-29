@@ -1,0 +1,11 @@
+DROP VIEW IF EXISTS vw_contratos_municipais_fora_do_pncp;
+DROP VIEW IF EXISTS vw_contratado_x_pago;
+DROP VIEW IF EXISTS vw_despesa_por_secretaria;
+DROP VIEW IF EXISTS vw_execucao_empenho;
+DROP FUNCTION IF EXISTS valor_liquido(numeric, boolean);
+DROP TABLE IF EXISTS pagamentos;
+DROP TABLE IF EXISTS liquidacoes;
+DROP TABLE IF EXISTS empenhos;
+DROP TABLE IF EXISTS contrato_aditamentos;
+DROP TABLE IF EXISTS contratos_municipais;
+DROP TABLE IF EXISTS unidades_orcamentarias;

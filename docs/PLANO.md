@@ -48,15 +48,24 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Cadeia SSL incompleta diagnosticada (falta o intermediário Certum DV TLS G2 R39 CA)
 - [x] Decidido: reproduzir a assinatura do token público (2026-10-28)
 - [x] Sonda `scripts/sonda_eddydata.py` validou token, assinatura e listagens (2026-10-28)
-- [ ] Registrar a exceção à "falha fechada" em `http.py` e liberar a regra de permissão no Claude Code (ou o usuário roda as coletas)
-- [~] Bundle de CA com o intermediário (feito na sonda; falta versionar no coletor; nunca `verify=False`)
-- [ ] Autenticação pública (token + cabeçalhos `agora`/`codigo`) no executor REA, renovando o token a cada 30 min
-- [ ] Mapear relações que trazem a secretaria (ficha → unidade executora) e os filtros de `contrato-aditamentos`
-- [ ] Lista branca de campos por recurso (favorecido e órgão trazem dados pessoais e `chave_acesso`)
-- [ ] Specs YAML ativas: `licitacoes`, `contratos`, `contrato-aditamentos`, `empenhos`, `liquidacoes`, `pagamentos`, `favorecidos`
-- [ ] Tabela de despesas (empenho → liquidação → pagamento) e migration correspondente
-- [ ] Cruzamento contrato PNCP × empenhos/pagamentos (valor contratado × valor pago)
-- [ ] Secretaria real de cada despesa, substituindo a aproximação por `unidade_nome`
+- [x] Exceção à "falha fechada" documentada em `http.py` e `eddydata/cliente.py`; a coleta roda no GitHub Actions
+- [x] Intermediário TLS da Certum versionado no pacote (`eddydata/certum_dv_tls_g2_r39_ca.pem`), somado ao certifi
+- [x] Cliente com token público, cabeçalhos `agora`/`codigo`, renovação antes de expirar e nova tentativa em 401
+- [x] Segunda sonda: secretaria = `ficha → executora → unidade`; empenho traz contrato/licitação com
+  `sequencial_pncp`; aditivos filtram por `contrato.orgao.id`; páginas de 1.000 (2026-10-29)
+- [x] Lista branca de campos na normalização: do credor só documento, tipo e nome; CPF em texto livre mascarado
+- [x] Coletor dedicado `eddydata coletar` (contratos, aditivos, empenhos, liquidações, pagamentos), incremental por
+  recurso com 15 dias de sobreposição, no workflow diário (carga inicial desde 2024-01-01)
+- [x] Migration 000013: `unidades_orcamentarias`, `contratos_municipais`, `contrato_aditamentos`, `empenhos`,
+  `liquidacoes`, `pagamentos`; anulações abatem o valor (`valor_liquido`)
+- [x] Cruzamento com o PNCP: `vw_contratado_x_pago` (contratado × empenhado/liquidado/pago) e
+  `vw_contratos_municipais_fora_do_pncp`; vínculo `sequencial_pncp + ano` conferido em 6 casos reais
+- [x] Secretaria real: `vw_despesa_por_secretaria` (empenhado, liquidado e pago por unidade orçamentária e ano)
+- [x] Teste real no banco local, out/2026 (2026-10-29): 3.221 empenhos com secretaria e credor; vínculo com o PNCP
+  de 427/427 contratos e 531/532 licitações; 0 CPF nos documentos. Atas (REGISTRO_PRECO) saíram do alerta
+  "fora do PNCP" (migration 000014): restam 19 contratos a checar
+- [ ] Primeira carga real no Neon (próximo run do workflow) e conferência de totais contra o portal
+- [ ] Avisar a Prefeitura/EddyData sobre a `chave_acesso` exposta no objeto do órgão (divulgação responsável)
 
 ## Fase 3 — API Go (MVP)
 

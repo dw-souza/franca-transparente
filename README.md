@@ -23,11 +23,14 @@ franca-transparencia/
 │       ├── 000009_views_painel             views dos cards e rankings
 │       ├── 000010_valores_sem_check        valores negativos da fonte entram (sinal de qualidade)
 │       ├── 000011_itens_licitacao          itens, resultados por item e preços praticados
-│       └── 000012_qualidade_dados          natureza (receita/despesa) e alertas de qualidade
+│       ├── 000012_qualidade_dados          natureza (receita/despesa) e alertas de qualidade
+│       ├── 000013_despesas_municipais      empenho → liquidação → pagamento por secretaria (EddyData)
+│       └── 000014_fora_do_pncp_so_contratos  atas de registro de preço fora do alerta "fora do PNCP"
 ├── services/
 │   ├── collectors/             # Python 3.11+
 │   │   ├── franca_collectors/
 │   │   │   ├── pncp/           # client, normalize, pipeline, domínios
+│   │   │   ├── eddydata/       # portal municipal: cliente (token público), normalização, pipeline
 │   │   │   ├── rea/            # spec YAML, executor genérico, triagem de HAR
 │   │   │   ├── storage/        # sinks: console, jsonl, postgres (upsert idempotente)
 │   │   │   ├── models.py       # modelos normalizados (pydantic)
