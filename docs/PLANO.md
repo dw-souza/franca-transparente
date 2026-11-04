@@ -64,7 +64,11 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] Teste real no banco local, out/2026 (2026-10-29): 3.221 empenhos com secretaria e credor; vínculo com o PNCP
   de 427/427 contratos e 531/532 licitações; 0 CPF nos documentos. Atas (REGISTRO_PRECO) saíram do alerta
   "fora do PNCP" (migration 000014): restam 19 contratos a checar
-- [ ] Primeira carga real no Neon (próximo run do workflow) e conferência de totais contra o portal
+- [x] Neon na migration 14 e PNCP/itens rodando no Actions (2026-10-30)
+- [~] Portal municipal bloqueia conexões dos datacenters do GitHub (servidor na rede da Prefeitura, AS265049):
+  job `eddydata` movido para runner próprio com rótulo `brasil`. Falta escolher e registrar o runner
+  (VM no Brasil recomendada) e exigir aprovação de workflows de contribuidores externos
+- [ ] Primeira carga real no Neon e conferência de totais contra o portal
 - [ ] Avisar a Prefeitura/EddyData sobre a `chave_acesso` exposta no objeto do órgão (divulgação responsável)
 
 ## Fase 3 — API Go (MVP)

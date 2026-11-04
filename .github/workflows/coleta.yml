@@ -63,21 +63,6 @@ jobs:
             python -m franca_collectors pncp coletar --incremental --saida postgres
           fi
 
-      - name: Portal municipal (EddyData)
-        if: ${{ !cancelled() }}
-        working-directory: services/collectors
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DESDE: ${{ inputs.desde }}
-        # Contratos, aditivos, empenhos, liquidações e pagamentos. Sem histórico, o incremental começa em
-        # 2024-01-01 (~400 mil registros, páginas de 1.000); depois retoma cada recurso com 15 dias de sobreposição.
-        run: |
-          if [ -n "$DESDE" ]; then
-            python -m franca_collectors eddydata coletar --desde "$DESDE" --saida postgres
-          else
-            python -m franca_collectors eddydata coletar --incremental --desde 2024-01-01 --saida postgres
-          fi
-
       - name: Itens e resultados das compras
         if: ${{ !cancelled() }}
         working-directory: services/collectors
@@ -93,3 +78,31 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m franca_collectors pncp abertas --saida postgres
+
+  # O servidor do portal municipal (rede da Prefeitura, AS265049) não aceita conexões dos datacenters do GitHub:
+  # este job roda num runner próprio com IP brasileiro, registrado com o rótulo "brasil".
+  eddydata:
+    needs: pncp            # migrations aplicadas no job anterior
+    if: ${{ !cancelled() }}
+    runs-on: [self-hosted, brasil]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "./services/collectors[postgres]"
+
+      - name: Portal municipal (EddyData)
+        working-directory: services/collectors
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DESDE: ${{ inputs.desde }}
+        # Contratos, aditivos, empenhos, liquidações e pagamentos. Sem histórico, o incremental começa em
+        # 2024-01-01 (~400 mil registros, páginas de 1.000); depois retoma cada recurso com 15 dias de sobreposição.
+        run: |
+          if [ -n "$DESDE" ]; then
+            python -m franca_collectors eddydata coletar --desde "$DESDE" --saida postgres
+          else
+            python -m franca_collectors eddydata coletar --incremental --desde 2024-01-01 --saida postgres
+          fi
