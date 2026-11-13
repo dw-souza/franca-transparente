@@ -65,9 +65,11 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
   de 427/427 contratos e 531/532 licitações; 0 CPF nos documentos. Atas (REGISTRO_PRECO) saíram do alerta
   "fora do PNCP" (migration 000014): restam 19 contratos a checar
 - [x] Neon na migration 14 e PNCP/itens rodando no Actions (2026-10-30)
-- [~] Portal municipal bloqueia conexões dos datacenters do GitHub (servidor na rede da Prefeitura, AS265049):
-  job `eddydata` movido para runner próprio com rótulo `brasil`. Falta escolher e registrar o runner
-  (VM no Brasil recomendada) e exigir aprovação de workflows de contribuidores externos
+- [~] Portal municipal bloqueia conexões dos datacenters do GitHub (servidor na rede da Prefeitura, AS265049).
+  Oracle Always Free sem capacidade em São Paulo; decidido: job `eddydata` no GitHub saindo pela VPN
+  Tailscale com o Mac do mantenedor como exit node (2 horários: 06:00 e 20:00; pula com aviso se o Mac
+  estiver fora). Falta: conta Tailscale, exit node aprovado, secrets `TS_OAUTH_*` e variável `TS_EXIT_NODE`.
+  Destino de longo prazo: VM no Brasil (`scripts/runner_vm.sh`) quando houver hospedagem (Fase 9)
 - [ ] Primeira carga real no Neon e conferência de totais contra o portal
 - [ ] Avisar a Prefeitura/EddyData sobre a `chave_acesso` exposta no objeto do órgão (divulgação responsável)
 

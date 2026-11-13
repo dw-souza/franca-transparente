@@ -6,6 +6,7 @@ name: Coleta
 on:
   schedule:
     - cron: "0 9 * * *"   # 06:00 em Brasília (o cron do GitHub é em UTC e pode atrasar alguns minutos)
+    - cron: "0 23 * * *"  # 20:00: segunda chance para o portal municipal, que depende do Mac ligado (job eddydata)
   workflow_dispatch:
     inputs:
       desde:
@@ -79,21 +80,49 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m franca_collectors pncp abertas --saida postgres
 
-  # O servidor do portal municipal (rede da Prefeitura, AS265049) não aceita conexões dos datacenters do GitHub:
-  # este job roda num runner próprio com IP brasileiro, registrado com o rótulo "brasil".
+  # O servidor do portal municipal (rede da Prefeitura, AS265049) não aceita conexões dos datacenters do GitHub.
+  # O job entra na rede Tailscale do projeto e sai para a internet pelo exit node (o Mac do mantenedor, em Franca).
+  # Exit node desligado: a coleta é pulada com aviso; o incremental recupera o atraso no próximo run com ele no ar.
   eddydata:
     needs: pncp            # migrations aplicadas no job anterior
     if: ${{ !cancelled() }}
-    runs-on: [self-hosted, brasil]
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "./services/collectors[postgres]"
+          cache: pip
+          cache-dependency-path: services/collectors/pyproject.toml
+      - run: pip install "./services/collectors[postgres]"   # antes da VPN: não passa pela conexão de casa
+
+      - uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Exit node no Brasil
+        id: saida
+        env:
+          EXIT_NODE: ${{ vars.TS_EXIT_NODE }}
+        run: |
+          test -n "$EXIT_NODE" || { echo "::error::defina a variável TS_EXIT_NODE (nome do Mac no Tailscale)"; exit 1; }
+          if ! tailscale ping --c 3 --timeout 10s "$EXIT_NODE" >/dev/null 2>&1; then
+            echo "::warning::exit node $EXIT_NODE fora do ar (Mac desligado ou dormindo): coleta do portal pulada"
+            echo "pular=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          sudo tailscale set --exit-node="$EXIT_NODE" --exit-node-allow-lan-access=false
+          curl -fsS -m 15 https://ipinfo.io/json | grep -E '"(country|city)"' || true   # deve mostrar BR
+          C="$(curl -s -o /dev/null --connect-timeout 10 -m 20 -w '%{time_connect}' https://eddydata-api.franca.sp.gov.br/ || true)"
+          if [ -z "$C" ] || [ "$C" = "0.000000" ]; then
+            echo "::warning::o portal municipal não abriu nem pelo exit node: coleta pulada"
+            echo "pular=1" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Portal municipal (EddyData)
+        if: ${{ steps.saida.outputs.pular != '1' }}
         working-directory: services/collectors
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
