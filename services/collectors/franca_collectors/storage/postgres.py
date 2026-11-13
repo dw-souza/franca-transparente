@@ -143,6 +143,21 @@ WITH ins AS (
 SELECT id FROM ins UNION ALL SELECT id FROM fornecedores WHERE cnpj_cpf = %(cnpj_cpf)s LIMIT 1
 """
 
+GARANTIR_FORNECEDORES_LOTE = """
+WITH dados (cnpj_cpf, tipo_pessoa, razao_social) AS (
+    SELECT * FROM unnest(%s::text[], %s::text[], %s::text[])
+),
+ins AS (
+    INSERT INTO fornecedores (cnpj_cpf, tipo_pessoa, razao_social)
+    SELECT cnpj_cpf, tipo_pessoa, razao_social FROM dados
+    ON CONFLICT (cnpj_cpf) DO NOTHING
+    RETURNING id, cnpj_cpf
+)
+SELECT id, cnpj_cpf FROM ins                   -- novos (invisíveis ao SELECT abaixo no mesmo comando)
+UNION ALL
+SELECT f.id, f.cnpj_cpf FROM fornecedores f JOIN dados d ON d.cnpj_cpf = f.cnpj_cpf
+"""
+
 UPSERT_UNIDADE = """
 WITH ins AS (
     INSERT INTO unidades_orcamentarias (orgao_id, codigo, nome) VALUES (%(orgao_id)s, %(codigo)s, %(nome)s)
@@ -339,23 +354,64 @@ class PostgresSink(Sink):
             self._fornecedores[f.cnpj_cpf] = self._um(GARANTIR_FORNECEDOR, f.model_dump())[0]
         return self._fornecedores[f.cnpj_cpf]
 
-    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
+    def _params_municipal(self, registro: Any) -> dict[str, Any]:
         params = registro.model_dump(exclude={"orgao_cnpj", "fornecedor", "unidade"})
+        if hasattr(registro, "orgao_cnpj"):
+            params["orgao_id"] = self._orgao_id_por_cnpj(registro.orgao_cnpj)
+        if hasattr(registro, "fornecedor"):
+            params["fornecedor_id"] = self._garantir_fornecedor(registro.fornecedor) if registro.fornecedor else None
+        if hasattr(registro, "unidade"):
+            params["unidade_id"] = None
+            if registro.unidade:
+                chave = (params["orgao_id"], registro.unidade.codigo)
+                if chave not in self._unidades:
+                    self._unidades[chave] = self._um(UPSERT_UNIDADE, {"orgao_id": chave[0],
+                                                     **registro.unidade.model_dump()})[0]
+                params["unidade_id"] = self._unidades[chave]
+        return params
+
+    def _carregar_fornecedores(self, registros: list[Any]) -> None:
+        """Garante de uma vez (1 consulta) os fornecedores do lote que ainda não estão no cache."""
+        novos = {f.cnpj_cpf: f for r in registros if (f := getattr(r, "fornecedor", None))
+                 and f.cnpj_cpf not in self._fornecedores}
+        if not novos:
+            return
+        fs = list(novos.values())
+        with self.conn.cursor() as cur:
+            cur.execute(GARANTIR_FORNECEDORES_LOTE, ([f.cnpj_cpf for f in fs], [f.tipo_pessoa for f in fs],
+                                                    [f.razao_social for f in fs]))
+            self._fornecedores.update({doc: id_ for id_, doc in cur.fetchall()})
+
+    def salvar_municipal(self, tipo: str, registro: Any) -> Resultado:
         with self._transacao():
-            if hasattr(registro, "orgao_cnpj"):
-                params["orgao_id"] = self._orgao_id_por_cnpj(registro.orgao_cnpj)
-            if hasattr(registro, "fornecedor"):
-                params["fornecedor_id"] = self._garantir_fornecedor(registro.fornecedor) if registro.fornecedor \
-                    else None
-            if hasattr(registro, "unidade"):
-                params["unidade_id"] = None
-                if registro.unidade:
-                    chave = (params["orgao_id"], registro.unidade.codigo)
-                    if chave not in self._unidades:
-                        self._unidades[chave] = self._um(UPSERT_UNIDADE, {"orgao_id": chave[0],
-                                                         **registro.unidade.model_dump()})[0]
-                    params["unidade_id"] = self._unidades[chave]
-            return self._resultado(self._um(UPSERT_MUNICIPAL[tipo], params))
+            return self._resultado(self._um(UPSERT_MUNICIPAL[tipo], self._params_municipal(registro)))
+
+    def salvar_municipal_lote(self, tipo: str, registros: list[Any]) -> list[Resultado | Exception]:
+        """Uma transação e poucas idas ao banco por lote (o runner do Actions fica a ~130 ms do Neon). Se o lote
+        falhar, refaz um a um para isolar o registro ruim."""
+        if not registros:
+            return []
+        try:
+            with self._transacao():
+                self._carregar_fornecedores(registros)
+                params = [self._params_municipal(r) for r in registros]
+                resultados: list[Resultado | Exception] = []
+                with self.conn.cursor() as cur:
+                    cur.executemany(UPSERT_MUNICIPAL[tipo], params, returning=True)
+                    while True:
+                        resultados.append(self._resultado(cur.fetchone()))
+                        if not cur.nextset():
+                            break
+                return resultados
+        except Exception as exc:  # noqa: BLE001 - cai para gravação individual
+            log.warning("lote de %d %s falhou (%s); gravando um a um", len(registros), tipo, exc)
+        saida: list[Resultado | Exception] = []
+        for r in registros:
+            try:
+                saida.append(self.salvar_municipal(tipo, r))
+            except Exception as exc:  # noqa: BLE001 - erro de um registro não derruba o lote
+                saida.append(exc)
+        return saida
 
     def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
         with self.conn.cursor() as cur:

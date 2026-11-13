@@ -70,6 +70,9 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
   Tailscale com o Mac do mantenedor como exit node (2 horários: 06:00 e 20:00; pula com aviso se o Mac
   estiver fora). Falta: conta Tailscale, exit node aprovado, secrets `TS_OAUTH_*` e variável `TS_EXIT_NODE`.
   Destino de longo prazo: VM no Brasil (`scripts/runner_vm.sh`) quando houver hospedagem (Fase 9)
+- [x] VPN Tailscale validada no Actions: coleta saindo pelo Mac e gravando no Neon (2026-11-13)
+- [x] Gravação em lote (uma transação e `executemany` por página de 1.000; refaz um a um se o lote falhar):
+  o runner fica a ~130 ms do Neon e a gravação registro a registro levaria >10 h na carga inicial
 - [ ] Primeira carga real no Neon e conferência de totais contra o portal
 - [ ] Avisar a Prefeitura/EddyData sobre a `chave_acesso` exposta no objeto do órgão (divulgação responsável)
 

@@ -28,6 +28,16 @@ class Sink:
         """Registro do sistema municipal (EddyData): tipo em empenho, liquidacao, pagamento, contrato, aditamento."""
         raise NotImplementedError
 
+    def salvar_municipal_lote(self, tipo: str, registros: list[Any]) -> list[Resultado | Exception]:
+        """Padrão: um a um; a exceção de um registro volta no lugar do resultado dele."""
+        saida: list[Resultado | Exception] = []
+        for r in registros:
+            try:
+                saida.append(self.salvar_municipal(tipo, r))
+            except Exception as exc:  # noqa: BLE001 - erro de um registro não derruba o lote
+                saida.append(exc)
+        return saida
+
     def licitacoes_sem_itens(self, limite: int) -> list[dict[str, Any]]:
         """Fila da coleta de itens: compras nunca coletadas ou atualizadas na fonte depois da última coleta.
 

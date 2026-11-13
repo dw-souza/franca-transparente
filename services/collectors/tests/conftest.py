@@ -19,7 +19,10 @@ MIGRATIONS = Path(__file__).resolve().parents[3] / "database" / "migrations"
 # Tabelas com dados de coleta; domínios semeados (modalidades) ficam.
 TABELAS_DADOS = (
     "registros_brutos", "execucoes_coleta", "endpoints_mapeados", "alertas_disparos", "alertas",
-    "diario_atos", "diarios_oficiais", "contratos", "licitacoes", "fornecedores", "orgaos",
+    "diario_atos", "diarios_oficiais", "licitacao_item_resultados", "licitacao_itens", "contratos", "licitacoes",
+    # sistema municipal: liquidações, pagamentos e aditivos não têm FK, o CASCADE não os alcança
+    "pagamentos", "liquidacoes", "empenhos", "contrato_aditamentos", "contratos_municipais",
+    "unidades_orcamentarias", "fornecedores", "orgaos",
 )
 
 

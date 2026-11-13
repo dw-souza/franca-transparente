@@ -13,6 +13,8 @@ from datetime import date, timedelta
 from functools import partial
 from typing import Any
 
+from pydantic import ValidationError
+
 from franca_collectors.eddydata.cliente import EddyDataClient
 from franca_collectors.eddydata.normalize import (
     normalizar_aditamento,
@@ -23,7 +25,7 @@ from franca_collectors.eddydata.normalize import (
 )
 from franca_collectors.normalizacao import normalizar_documento
 from franca_collectors.pncp.client import janelas
-from franca_collectors.pncp.pipeline import Estatisticas, _processar
+from franca_collectors.pncp.pipeline import Estatisticas
 from franca_collectors.storage.base import Sink
 
 log = logging.getLogger(__name__)
@@ -62,6 +64,39 @@ _NORMALIZADORES: dict[str, Callable[..., Any]] = {
 }
 
 
+def _gravar_em_lotes(
+    registros: Iterable[dict[str, Any]],
+    normalizar: Callable[[dict[str, Any]], Any],
+    salvar_lote: Callable[[list[Any]], list[Any]],
+    stats: Estatisticas,
+    tamanho: int = LIMITE_PAGINA,
+) -> None:
+    """Normaliza um a um (registro inválido só conta erro) e grava em lotes do tamanho da página."""
+    lote: list[Any] = []
+
+    def descarregar() -> None:
+        for item, res in zip(lote, salvar_lote(lote), strict=True):
+            if isinstance(res, Exception):
+                stats.erros += 1
+                log.error("falha ao gravar %s: %s", item.id_fonte, res)
+            else:
+                stats.resultados[res] += 1
+        lote.clear()
+
+    for raw in registros:
+        stats.lidos += 1
+        try:
+            lote.append(normalizar(raw))
+        except (ValidationError, KeyError, TypeError, ValueError) as exc:
+            stats.erros += 1
+            log.warning("registro inválido (%s): %s", raw.get("id", "?"), exc)
+            continue
+        if len(lote) >= tamanho:
+            descarregar()
+    if lote:
+        descarregar()
+
+
 def coletor_de(tipo: str) -> str:
     return f"eddydata.{tipo}"
 
@@ -92,8 +127,8 @@ class ColetorEddyData:
                       f"{rec.campo_data}$ge": a.isoformat(), f"{rec.campo_data}$le": b.isoformat()}
             exec_id = self.sink.iniciar_execucao(coletor_de(tipo), {"recurso": rec.caminho}, a, b)
             try:
-                _processar(self.cliente.paginar(rec.caminho, params, LIMITE_PAGINA), normalizar,
-                           lambda r, t=tipo: self.sink.salvar_municipal(t, r), stats)
+                _gravar_em_lotes(self.cliente.paginar(rec.caminho, params, LIMITE_PAGINA), normalizar,
+                                 lambda lote, t=tipo: self.sink.salvar_municipal_lote(t, lote), stats)
             except Exception as exc:
                 self.sink.finalizar_execucao(exec_id, "erro", stats.lidos, stats.gravados, stats.erros, str(exc))
                 raise

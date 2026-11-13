@@ -207,3 +207,18 @@ def test_sink_novo_sem_cache_cria_e_reaproveita_orgao(banco_teste, pg):
                 ("inserido", "inalterado")
     assert pg.execute("SELECT count(*) FROM orgaos WHERE cnpj = '11222333000181'").fetchone()[0] == 1
     assert pg.execute("SELECT count(*) FROM empenhos").fetchone()[0] == 1
+
+
+@pytest.mark.integracao
+def test_lote_com_registro_ruim_grava_os_demais(sink_pg, pg):
+    from franca_collectors.eddydata.normalize import normalizar_liquidacao
+
+    boas = [normalizar_liquidacao(r) for r in LIQUIDACOES]
+    ruim = boas[0].model_copy(update={"id_fonte": 8999, "valor": None})   # viola NOT NULL no banco
+    resultados = sink_pg.salvar_municipal_lote("liquidacao", [boas[0], ruim, boas[1]])
+    assert resultados[0] == "inserido" and resultados[2] == "inserido"
+    assert isinstance(resultados[1], Exception)
+    assert pg.execute("SELECT count(*) FROM liquidacoes").fetchone()[0] == 2
+
+    # Lote sem erro: um único executemany; reexecução idempotente
+    assert sink_pg.salvar_municipal_lote("liquidacao", boas) == ["inalterado", "inalterado"]
