@@ -129,7 +129,8 @@ def test_pipeline_em_memoria_e_filtros(sessao_fake):
             if c["metodo"] == "GET" and "/orgaos/" not in c["path"]}
     assert gets["contrato-aditamentos"]["contrato.orgao.id"] == "1"
     assert gets["empenhos"]["data_empenho$ge"] == "2026-10-01" and gets["empenhos"]["orgao.id"] == "1"
-    assert all(c["path"].endswith("/1000") for c in fake.chamadas if "/empenhos/" in c["path"])
+    assert all(c["path"].endswith("/250") for c in fake.chamadas if "/empenhos/" in c["path"])
+    assert all(c["path"].endswith("/1000") for c in fake.chamadas if "/pagamentos/" in c["path"])
 
 
 def test_incremental_por_recurso(sessao_fake):

@@ -112,3 +112,33 @@ def test_bundle_ca_inclui_o_intermediario_da_certum():
     from franca_collectors.eddydata.cliente import INTERMEDIARIO
 
     assert INTERMEDIARIO.read_text().strip() in Path(bundle_ca()).read_text()
+
+
+def _rota_que_cai(vezes: int):
+    """Token normal; os primeiros `vezes` GETs caem no meio da leitura (como o timeout real do portal)."""
+    estado = {"quedas": vezes}
+
+    def rota(metodo, path, params, corpo):
+        if path.endswith("token-publico"):
+            return 200, {"token": _jwt()}
+        if estado["quedas"]:
+            estado["quedas"] -= 1
+            raise requests.ConnectionError("Read timed out.")
+        return 200, {"content": [{"id": 1}], "totalPages": 1}
+
+    return rota
+
+
+def test_queda_de_conexao_e_tentada_de_novo(sessao_fake):
+    s, _ = sessao_fake(_rota_que_cai(2))
+    esperas = []
+    cliente = EddyDataClient(s, API, delay=0, relogio=Relogio(), dormir=esperas.append)
+    assert cliente.get("empenhos/1/1")["content"] == [{"id": 1}]
+    assert esperas == [10, 20]
+
+
+def test_queda_persistente_falha_depois_de_3_tentativas(sessao_fake):
+    s, _ = sessao_fake(_rota_que_cai(3))
+    cliente = EddyDataClient(s, API, delay=0, relogio=Relogio(), dormir=lambda _: None)
+    with pytest.raises(requests.ConnectionError):
+        cliente.get("empenhos/1/1")

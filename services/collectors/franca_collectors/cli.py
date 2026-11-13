@@ -130,7 +130,7 @@ def _cmd_eddydata(args, cfg: Settings) -> int:
     if desconhecidos:
         print(f"recursos desconhecidos: {', '.join(sorted(desconhecidos))}", file=sys.stderr)
         return 2
-    cliente = criar_cliente(cfg.user_agent, cfg.http_retries, timeout=cfg.http_timeout,
+    cliente = criar_cliente(cfg.user_agent, cfg.http_retries, timeout=max(cfg.http_timeout, 120.0),
                             delay=max(cfg.http_delay, 1.0))
     with criar_sink(args.saida, cfg.database_url, args.arquivo) as sink:
         resumo = ColetorEddyData(cliente, sink).coletar(args.desde, args.ate, tipos, args.incremental)

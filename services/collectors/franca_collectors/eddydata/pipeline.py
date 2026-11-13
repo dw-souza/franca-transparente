@@ -42,6 +42,7 @@ class Recurso:
     relations: str
     filtro_orgao: str = "orgao.id"
     precisa_cnpj: bool = False
+    limite: int = LIMITE_PAGINA   # registros por página (e por lote gravado)
 
 
 RECURSOS: dict[str, Recurso] = {r.tipo: r for r in (
@@ -50,7 +51,7 @@ RECURSOS: dict[str, Recurso] = {r.tipo: r for r in (
     Recurso("empenho", "empenhos", "data_empenho",
             "favorecido,subelemento,modalidade,contrato,licitacao,ficha,ficha.executora,ficha.executora.unidade,"
             "ficha.despesa,ficha.funcao,ficha.subfuncao,ficha.programa,ficha.acao,ficha.recurso",
-            precisa_cnpj=True),
+            precisa_cnpj=True, limite=250),   # empenho vem com ficha, contrato e licitação inteiros: página pesada
     Recurso("liquidacao", "liquidacoes", "data_liquidacao", "empenho"),
     Recurso("pagamento", "pagamentos", "data_pagamento", "liquidacao,liquidacao.empenho"),
 )}
@@ -127,8 +128,8 @@ class ColetorEddyData:
                       f"{rec.campo_data}$ge": a.isoformat(), f"{rec.campo_data}$le": b.isoformat()}
             exec_id = self.sink.iniciar_execucao(coletor_de(tipo), {"recurso": rec.caminho}, a, b)
             try:
-                _gravar_em_lotes(self.cliente.paginar(rec.caminho, params, LIMITE_PAGINA), normalizar,
-                                 lambda lote, t=tipo: self.sink.salvar_municipal_lote(t, lote), stats)
+                _gravar_em_lotes(self.cliente.paginar(rec.caminho, params, rec.limite), normalizar,
+                                 lambda lote, t=tipo: self.sink.salvar_municipal_lote(t, lote), stats, rec.limite)
             except Exception as exc:
                 self.sink.finalizar_execucao(exec_id, "erro", stats.lidos, stats.gravados, stats.erros, str(exc))
                 raise

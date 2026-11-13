@@ -40,6 +40,7 @@ CIDADE = 1
 CODIGO_ORGAO = "020000"  # environment.orgao do bundle do portal: Município de Franca
 INTERMEDIARIO = Path(__file__).with_name("certum_dv_tls_g2_r39_ca.pem")
 MARGEM_TOKEN_S = 120  # renova o token antes de expirar
+TENTATIVAS_REDE = 3   # queda/timeout no meio da resposta (o Retry da sessão só cobre antes do corpo começar)
 
 
 def bundle_ca() -> str:
@@ -74,10 +75,11 @@ class EddyDataClient:
         self,
         sessao: requests.Session,
         base_url: str = API_PADRAO,
-        timeout: float = 60.0,
+        timeout: float = 120.0,
         delay: float = 1.0,
         cidade: int = CIDADE,
         relogio=time.time,
+        dormir=time.sleep,
     ):
         self.sessao = sessao
         self.base_url = base_url.rstrip("/")
@@ -85,6 +87,7 @@ class EddyDataClient:
         self.throttle = Throttle(delay)
         self.cidade = cidade
         self.relogio = relogio
+        self.dormir = dormir
         self.requisicoes = 0
         self._token: str | None = None
         self._claims: dict[str, Any] = {}
@@ -119,9 +122,7 @@ class EddyDataClient:
     def get(self, caminho: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{self.base_url}/{self.cidade}/{caminho.lstrip('/')}"
         for tentativa in (1, 2):
-            self.throttle.esperar()
-            resp = self.sessao.get(url, params=params, headers=self.cabecalhos(), timeout=self.timeout)
-            self.requisicoes += 1
+            resp = self._get_com_retentativa(url, params)
             if resp.status_code == 401 and tentativa == 1:  # token revogado/expirado no servidor: renova uma vez
                 self._token = None
                 continue
@@ -132,6 +133,21 @@ class EddyDataClient:
         if resp.status_code >= 400:
             raise requests.HTTPError(f"{resp.status_code} em {url}: {resp.text[:300]}", response=resp)
         return resp.json()
+
+    def _get_com_retentativa(self, url: str, params: dict[str, Any] | None) -> requests.Response:
+        for tentativa in range(1, TENTATIVAS_REDE + 1):
+            self.throttle.esperar()
+            try:
+                resp = self.sessao.get(url, params=params, headers=self.cabecalhos(), timeout=self.timeout)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                if tentativa == TENTATIVAS_REDE:
+                    raise
+                log.warning("%s: %s; nova tentativa %d/%d", url, exc, tentativa + 1, TENTATIVAS_REDE)
+                self.dormir(10 * tentativa)
+                continue
+            self.requisicoes += 1
+            return resp
+        raise AssertionError("inalcançável")
 
     def paginar(self, recurso: str, params: dict[str, Any], limite: int = 100) -> Iterator[dict[str, Any]]:
         """Percorre ``{recurso}/{pagina}/{limite}``; a resposta traz ``content`` e ``totalPages``."""
