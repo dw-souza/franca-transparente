@@ -73,7 +73,17 @@ Legenda: `[x]` feito · `[ ]` a fazer · `[~]` em andamento ou parcial · 🔒 d
 - [x] VPN Tailscale validada no Actions: coleta saindo pelo Mac e gravando no Neon (2026-11-13)
 - [x] Gravação em lote (uma transação e `executemany` por página de 1.000; refaz um a um se o lote falhar):
   o runner fica a ~130 ms do Neon e a gravação registro a registro levaria >10 h na carga inicial
-- [ ] Primeira carga real no Neon e conferência de totais contra o portal
+- [x] Primeira carga real no Neon (2026-11-13): 110.230 empenhos, 160.320 liquidações e 151.791 pagamentos
+  desde 2024; 100% dos pagamentos acham o empenho; empenhado de R$ 1,20 bi (2024), 1,34 bi (2025) e
+  1,39 bi (2026 até nov); banco com 219 MB de 1 GB
+- [x] Vínculo contrato municipal ↔ PNCP validado (migration 000015, `vw_vinculo_contrato_pncp`): o sequencial do
+  sistema municipal errava em REGISTRO_PRECO (é o da ata) e em ~20% dos CONTRATO; agora só vincula com processo
+  ou valor batendo, ou por processo + fornecedor. 525 contratos vinculados; pago > 125% do contratado+aditivos
+  caiu de 138 para 49 casos, quase todos credenciamentos (valor contratado é estimativa)
+- [ ] Conferir totais contra o portal (ex.: empenhado 2025 em "Despesas orçamentárias mensais")
+- [ ] Restos a pagar: `empenhos-restos`, `liquidacoes-restos-pagar` e `pagamentos-restos-pagar` (pagamentos de
+  anos anteriores ficam fora de `pagamentos`; o "pago" atual é só do orçamento do próprio ano)
+- [ ] Painel: tratar credenciamento à parte no alerta "pago acima do contratado"
 - [ ] Avisar a Prefeitura/EddyData sobre a `chave_acesso` exposta no objeto do órgão (divulgação responsável)
 
 ## Fase 3 — API Go (MVP)

@@ -44,16 +44,24 @@ CONTRATO = {"id": 501, "numero": "00052026", "ano": 2026, "processo": "06278/202
 CONTRATO_SO_MUNICIPAL = {**CONTRATO, "id": 502, "numero": "00062026", "sequencial_pncp": None,
                          "valor_contrato": "5000.00", "favorecido": FAV_MEI, "licitacao": None}
 ATA_SO_MUNICIPAL = {**CONTRATO_SO_MUNICIPAL, "id": 503, "tipo": "REGISTRO_PRECO"}  # vira ata no PNCP, não contrato
+ATA_COM_SEQUENCIAL = {**CONTRATO, "id": 504, "tipo": "REGISTRO_PRECO", "sequencial_pncp": 5}  # sequencial da ATA 5
+# Sem sequencial, mas mesmo processo ("1012/2026" no PNCP) e mesmo fornecedor do contrato 000007/2026 → vincula
+CONTRATO_POR_PROCESSO = {**CONTRATO, "id": 505, "sequencial_pncp": None, "processo": "01012/2026",
+                         "favorecido": FAV_MEI, "valor_contrato": "4500.00"}
+# Sequencial aponta para o 000006/2026, mas processo e valor não batem → não vincula
+CONTRATO_SEQUENCIAL_ERRADO = {**CONTRATO, "id": 506, "sequencial_pncp": 6, "processo": "99999/2026",
+                              "valor_contrato": "999.00"}
 EMPENHOS = [
     {"id": 9001, "numero": 26214, "especie": "EMO", "tipo_empenho": "O", "valor_empenho": "100000.00",
      "data_empenho": "2026-10-16T03:00:00.000Z", "processo": "06278/2026",
      "historico": "Empenho ref. contrato 0005/2026, fiscal CPF 123.456.789-09", "favorecido": FAV_PJ,
      "subelemento": {"codigo": "33903009001", "nome": "MEDICAMENTOS"},
      "modalidade": {"codigo": "8", "nome": "PREGÃO - ELETRÔNICO"}, "ficha": FICHA,
-     "contrato": {"id": 501, "ano": 2026, "sequencial_pncp": 5}, "licitacao": {"sequencial_pncp": 12, "ano_pncp": 2026}},
+     "contrato": {"id": 501, "tipo": "CONTRATO", "ano": 2026, "sequencial_pncp": 5},
+     "licitacao": {"sequencial_pncp": 12, "ano_pncp": 2026}},
     {"id": 9002, "numero": 26300, "especie": "EOA", "tipo_empenho": "O", "valor_empenho": "-10000.00",
      "data_empenho": "2026-10-20T03:00:00.000Z", "historico": "ANULAÇÃO PARCIAL", "favorecido": FAV_PJ,
-     "ficha": FICHA, "contrato": {"id": 501, "ano": 2026, "sequencial_pncp": 5}, "licitacao": None},
+     "ficha": FICHA, "contrato": {"id": 501, "tipo": "CONTRATO", "ano": 2026, "sequencial_pncp": 5}, "licitacao": None},
 ]
 LIQUIDACOES = [
     {"id": 8001, "valor_liquidado": "60000.00", "data_liquidacao": "2026-10-21T03:00:00.000Z", "anulacao": False,
@@ -70,7 +78,8 @@ ADITAMENTOS = [
     {"id": 9457, "numero": "1", "finalidade": "1º ADITIVO - PRAZO - 12 MESES", "valor_total": "50500.0000",
      "data_aditamento": "2026-10-26T03:00:00.000Z", "mudanca_vigencia": True, "contrato": {"id": 501}},
 ]
-POR_RECURSO = {"contratos": [CONTRATO, CONTRATO_SO_MUNICIPAL, ATA_SO_MUNICIPAL], "contrato-aditamentos": ADITAMENTOS,
+POR_RECURSO = {"contratos": [CONTRATO, CONTRATO_SO_MUNICIPAL, ATA_SO_MUNICIPAL, CONTRATO_POR_PROCESSO,
+                              CONTRATO_SEQUENCIAL_ERRADO], "contrato-aditamentos": ADITAMENTOS,
                "empenhos": EMPENHOS, "liquidacoes": LIQUIDACOES, "pagamentos": PAGAMENTOS}
 
 
@@ -111,6 +120,15 @@ def test_contrato_mei_com_cpf_no_nome_e_sem_pncp():
     assert "99988877766" not in json.dumps(c.model_dump(mode="json"))  # gestor_cpf fica de fora
 
 
+def test_registro_de_preco_nao_vira_contrato_do_pncp():
+    """Regressão: o sequencial_pncp de REGISTRO_PRECO é o da ata; ligava ao contrato de mesmo número."""
+    assert normalizar_contrato_municipal(ATA_COM_SEQUENCIAL, CNPJ).id_pncp is None
+    emp = {**EMPENHOS[0], "contrato": {"id": 504, "tipo": "REGISTRO_PRECO", "ano": 2026, "sequencial_pncp": 5}}
+    e = normalizar_empenho(emp, CNPJ)
+    assert e.contrato_id_pncp is None and e.contrato_id_fonte == 504
+    assert normalizar_contrato_municipal(CONTRATO, CNPJ).id_pncp == f"{CNPJ}-2-000005/2026"
+
+
 def test_datas_em_utc_viram_data_de_brasilia():
     assert data_local("2026-09-28T03:00:00.000Z") == date(2026, 9, 28)
     assert data_local("2026-09-29T02:00:00.000Z") == date(2026, 9, 28)  # 23h do dia 28 em Brasília
@@ -123,7 +141,7 @@ def test_pipeline_em_memoria_e_filtros(sessao_fake):
     sink = MemoriaSink()
     resumo = ColetorEddyData(cliente(s), sink).coletar(date(2026, 10, 1), date(2026, 10, 31))
     assert {t: r.lidos for t, r in resumo.items()} == \
-        {"contrato": 3, "aditamento": 1, "empenho": 2, "liquidacao": 2, "pagamento": 1}
+        {"contrato": 5, "aditamento": 1, "empenho": 2, "liquidacao": 2, "pagamento": 1}
     assert all(r.erros == 0 for r in resumo.values())
     gets = {c["path"].split("/franca/1/")[1].split("/")[0]: c["params"] for c in fake.chamadas
             if c["metodo"] == "GET" and "/orgaos/" not in c["path"]}
@@ -177,12 +195,15 @@ def test_execucao_da_despesa_no_postgres(sessao_fake, rota_pncp, sink_pg, pg):
     assert pg.execute("SELECT secretaria, empenhado, liquidado, pago FROM vw_despesa_por_secretaria").fetchall() == \
         [("SECRETARIA MUN. DE SAÚDE", Decimal("90000.00"), Decimal("55000.00"), Decimal("40000.00"))]
 
-    cxp = pg.execute("SELECT contratado, empenhado, pago, empenhos FROM vw_contratado_x_pago "
-                     "WHERE id_pncp = %s", (f"{CNPJ}-2-000005/2026",)).fetchone()
-    assert cxp == (Decimal("120000.00"), Decimal("90000.00"), Decimal("40000.00"), 2)
+    cxp = pg.execute("SELECT contratado, empenhado, pago, empenhos, aditivos, contratado_com_aditivos "
+                     "FROM vw_contratado_x_pago WHERE id_pncp = %s", (f"{CNPJ}-2-000005/2026",)).fetchone()
+    assert cxp == (Decimal("120000.00"), Decimal("90000.00"), Decimal("40000.00"), 2,
+                   Decimal("50500.00"), Decimal("170500.00"))
 
-    fora = [r[0] for r in pg.execute("SELECT id_fonte FROM vw_contratos_municipais_fora_do_pncp")]
-    assert fora == [502]
+    fora = [r[0] for r in pg.execute("SELECT id_fonte FROM vw_contratos_municipais_fora_do_pncp ORDER BY 1")]
+    assert fora == [502, 506]   # 506: sequencial aponta para contrato do PNCP com outro processo e valor
+    vinculos = dict(pg.execute("SELECT id_fonte, criterio FROM vw_vinculo_contrato_pncp"))
+    assert vinculos == {501: "sequencial+valor", 505: "processo+fornecedor"}
     assert pg.execute("SELECT count(*) FROM contrato_aditamentos WHERE contrato_id_fonte = 501").fetchone()[0] == 1
     # Nome do fornecedor que veio do PNCP não é sobrescrito pelo do sistema municipal
     assert pg.execute("SELECT razao_social FROM fornecedores WHERE cnpj_cpf = '12345678000195'").fetchone() == \

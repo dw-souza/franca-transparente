@@ -51,6 +51,14 @@ def _id_pncp(cnpj: str, tipo: int, sequencial: Any, ano: Any) -> str | None:
     return f"{cnpj}-{tipo}-{seq:06d}/{a}" if seq and a else None
 
 
+def _id_pncp_contrato(cnpj: str, contrato: dict[str, Any]) -> str | None:
+    """Só o tipo CONTRATO vira contrato no PNCP. Em REGISTRO_PRECO o sequencial_pncp é o da ata (outra numeração):
+    ligar como contrato apontava para o contrato errado (0 de 497 casos batiam em valor/processo)."""
+    if contrato.get("tipo") != "CONTRATO":
+        return None
+    return _id_pncp(cnpj, 2, contrato.get("sequencial_pncp"), contrato.get("ano"))
+
+
 def _fornecedor(fav: dict[str, Any] | None) -> tuple[Fornecedor | None, str | None]:
     if not fav:
         return None, None
@@ -111,7 +119,7 @@ def normalizar_empenho(raw: dict[str, Any], orgao_cnpj: str) -> Empenho:
         fonte_recurso_nome=recurso_nome,
         modalidade=texto(caminho(raw, "modalidade.nome")),
         contrato_id_fonte=inteiro_ou_none(contrato.get("id")),
-        contrato_id_pncp=_id_pncp(orgao_cnpj, 2, contrato.get("sequencial_pncp"), contrato.get("ano")),
+        contrato_id_pncp=_id_pncp_contrato(orgao_cnpj, contrato),
         licitacao_id_pncp=_id_pncp(orgao_cnpj, 1, licitacao.get("sequencial_pncp"), licitacao.get("ano_pncp")),
         payload_hash=hash_payload(raw),
     )
@@ -137,7 +145,7 @@ def normalizar_contrato_municipal(raw: dict[str, Any], orgao_cnpj: str) -> Contr
         data_termino=data_local(raw.get("data_termino")),
         excluido=bool(raw.get("excluido")),
         inativo=bool(raw.get("inativo")),
-        id_pncp=_id_pncp(orgao_cnpj, 2, raw.get("sequencial_pncp"), raw.get("ano")),
+        id_pncp=_id_pncp_contrato(orgao_cnpj, raw),
         licitacao_id_pncp=_id_pncp(orgao_cnpj, 1, licitacao.get("sequencial_pncp"), licitacao.get("ano_pncp")),
         payload_hash=hash_payload(raw),
     )
