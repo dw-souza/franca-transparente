@@ -109,10 +109,20 @@ jobs:
           EXIT_NODE: ${{ vars.TS_EXIT_NODE }}
         run: |
           test -n "$EXIT_NODE" || { echo "::error::defina a variável TS_EXIT_NODE (nome do Mac no Tailscale)"; exit 1; }
-          if ! tailscale ping --c 3 --timeout 10s "$EXIT_NODE" >/dev/null 2>&1; then
-            echo "::warning::exit node $EXIT_NODE fora do ar (Mac desligado ou dormindo): coleta do portal pulada"
-            echo "pular=1" >> "$GITHUB_OUTPUT"; exit 0
-          fi
+          pular() { echo "::warning::$1: coleta do portal pulada"; tailscale status || true; echo "pular=1" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # logo após entrar na rede o runner pode ainda não conhecer os outros nós: tenta por até ~1 min
+          alcancou=""
+          for i in 1 2 3 4 5 6; do
+            if tailscale ping --c 1 --timeout 5s "$EXIT_NODE"; then alcancou=1; break; fi
+            sleep 5
+          done
+          [ -n "$alcancou" ] || pular "não alcancei $EXIT_NODE (Mac desligado/dormindo, nome errado em TS_EXIT_NODE ou política do Tailscale bloqueando tag:ci)"
+
+          # o nó precisa anunciar saída para a internet ("Run as exit node" ligado e aprovado no painel)
+          tailscale exit-node list | tee /tmp/exit-nodes.txt
+          grep -qi "$EXIT_NODE" /tmp/exit-nodes.txt || pular "$EXIT_NODE não está anunciado/aprovado como exit node"
+
           sudo tailscale set --exit-node="$EXIT_NODE" --exit-node-allow-lan-access=false
           curl -fsS -m 15 https://ipinfo.io/json | grep -E '"(country|city)"' || true   # deve mostrar BR
           C="$(curl -s -o /dev/null --connect-timeout 10 -m 20 -w '%{time_connect}' https://eddydata-api.franca.sp.gov.br/ || true)"
